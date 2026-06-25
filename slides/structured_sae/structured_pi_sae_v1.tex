@@ -33,7 +33,7 @@
 \newcommand{\Z}{\mathbb{Z}}
 
 \title{Learning Causal Variables, Not Causal Directions}
-\subtitle{Structured sparse autoencoders for nonlinear causal discovery\\[0.3em]{\small Validated on 5 GPT-2 tasks from the MIB benchmark}}
+\subtitle{Structured sparse autoencoders for nonlinear causal discovery\\[0.3em]{\small Validated on 6 GPT-2 tasks from the MIB benchmark}}
 \author{Elliot Tower}
 \date{2026}
 \institute{}
@@ -1112,49 +1112,43 @@ Composite ($S^1 {\times} S^1$) & 4+ & \textbf{2} \\
 
 \begin{columns}[T]
 \begin{column}{0.50\textwidth}
-{\small Apply to \textbf{5 NLP tasks} in GPT-2-small, layer 10.}
+{\small Apply to \textbf{6 NLP tasks} in GPT-2-small, layer 8.}
 
 \vspace{0.2em}
-{\scriptsize Using MIB counterfactual pairs (Hanna et al.\ 2024):}
+{\scriptsize Using MIB counterfactual pairs (Prakash et al.\ 2024):}
 \begin{itemize}\setlength{\itemsep}{0pt}
-  \item {\scriptsize \textbf{SVA}: singular/plural agreement (12,400 pairs)}
+  \item {\scriptsize \textbf{IOI}: indirect object identification (1,983 pairs)}
+  \item {\scriptsize \textbf{SVA}: singular/plural agreement (varies)}
   \item {\scriptsize \textbf{Greater-than}: year comparison (1,000 pairs)}
   \item {\scriptsize \textbf{Gender bias}: occupation $\to$ he/she (986 pairs)}
-  \item {\scriptsize \textbf{Capitals}: country $\to$ capital (190 pairs)}
   \item {\scriptsize \textbf{Hypernymy}: word $\to$ category (198 pairs)}
+  \item {\scriptsize \textbf{Capitals}: country $\to$ capital (190 pairs, 182 classes)}
 \end{itemize}
 
 \vspace{0.2em}
-{\scriptsize Does pi-SAE's conservatism hold on language tasks?}
+{\scriptsize E2E training is the key --- without it, pi-SAE is mediocre.}
 \end{column}
 \begin{column}{0.48\textwidth}
 {\scriptsize\centering
 \renewcommand{\arraystretch}{1.05}
 \begin{tabular}{l|ccc}
 \toprule
-\textbf{Task} & \textbf{DAS} & \textbf{NL-DAS} & \textbf{Str.\ pi-SAE} \\
+\textbf{Task} & \textbf{DAS} & \textbf{pi-SAE} & \textbf{E2E} \\
 \midrule
-\multicolumn{4}{c}{\textit{$k = 1$}} \\
+\multicolumn{4}{c}{\textit{Standard IIA (strict IIA), $k = 1$}} \\
 \midrule
-SVA        & 0.00 & \textcolor{red}{1.00} & 0.00 \\
-Greater-th & 0.03 & \textcolor{red}{1.00} & 0.00 \\
-Gender bias& 0.88 & \textcolor{red}{1.00} & 0.54 \\
-Capitals   & 0.00 & 0.00 & \textbf{0.12} \\
-Hypernymy  & 0.03 & 0.20 & \textbf{0.50} \\
-\midrule
-\multicolumn{4}{c}{\textit{$k = 4$}} \\
-\midrule
-SVA        & 0.02 & \textcolor{red}{1.00} & 0.00 \\
-Greater-th & 0.31 & \textcolor{red}{1.00} & 0.00 \\
-Gender bias& \textbf{1.00} & \textcolor{red}{1.00} & 0.95 \\
-Capitals   & 0.02 & 0.07 & \textbf{0.37} \\
-Hypernymy  & 0.08 & 0.43 & \textbf{0.47} \\
+IOI          & 0.19 (0.19) & 1.00 (1.00) & \textbf{1.00 (1.00)} \\
+Gender bias  & 0.62 (0.52) & 0.39 (0.33) & \textbf{1.00 (1.00)} \\
+Greater-than & 0.93 (0.28) & 0.37 (0.00) & \textbf{1.00 (1.00)} \\
+SVA          & 0.92 (0.00) & 0.45 (0.00) & \textbf{1.00 (1.00)} \\
+Hypernymy    & 0.07 (0.02) & 0.58 (0.17) & \textbf{0.97 (0.90)} \\
+Capitals$^\dagger$ & 0.12 (---) & 0.19 (0.02) & \textbf{0.51 (0.26)} \\
 \bottomrule
 \end{tabular}
 }
 
 \vspace{0.2em}
-{\scriptsize \textcolor{red}{Red}: NL-DAS false positives.}
+{\scriptsize $^\dagger$182 classes, $\approx$1 example/class --- data limitation.}
 \end{column}
 \end{columns}
 \end{frame}
@@ -1505,49 +1499,34 @@ f6  & 0.050 & tertiary \\
 {\small This is what DAS does implicitly --- train on the intervention objective. But we combine it with \textbf{structured sparsity} and \textbf{nonlinear} encoding.}
 
 \vspace{0.5em}
-{\small \textbf{Result}: Structured pi-SAE E2E achieves \textbf{0.97 standard IIA} on hypernymy ($k{=}1$), where DAS gets 0.07.}
+{\small \textbf{Result}: E2E achieves strict IIA $\geq 0.90$ on \textbf{5/6 GPT-2 tasks} at $k{=}1$.}
 
 \vspace{0.3em}
-{\small $14\times$ better than DAS, $1.35\times$ better than nonlinear DAS.}
+{\small Dominates DAS on all six tasks. $14\times$ better on hypernymy.}
 \end{column}
 \begin{column}{0.50\textwidth}
 {\scriptsize\centering
 \renewcommand{\arraystretch}{1.15}
-\textbf{Hypernymy --- standard IIA (strict IIA)}\\[0.3em]
+\textbf{All 6 GPT-2 tasks --- standard IIA (strict IIA), $k{=}1$}\\[0.3em]
 \begin{tabular}{l|cc}
 \toprule
-\textbf{Method} & \textbf{$k = 1$} & \textbf{$k = 4$} \\
+\textbf{Task} & \textbf{DAS} & \textbf{E2E} \\
 \midrule
-DAS              & 0.07 (0.02) & 0.23 (0.08) \\
-NL-DAS           & 0.72 (0.15) & 0.92 (0.32) \\
-\midrule
-Vanilla VAE      & 0.00 (0.00) & 0.48 (0.18) \\
-pi-VAE           & 0.00 (0.00) & 0.57 (0.20) \\
-Str.\ pi-SAE     & 0.58 (0.17) & 0.52 (0.13) \\
-\midrule
-\textbf{Str.\ pi-SAE E2E} & \textbf{0.97 (0.90)} & \textbf{0.98 (0.85)} \\
-\bottomrule
-\end{tabular}
-}
-
-\vspace{0.5em}
-{\scriptsize\centering
-\textbf{Gender bias --- standard IIA (strict IIA)}\\[0.3em]
-\begin{tabular}{l|cc}
-\toprule
-\textbf{Method} & \textbf{$k = 1$} & \textbf{$k = 4$} \\
-\midrule
-DAS              & 0.62 (0.51) & 0.88 (0.85) \\
-NL-DAS           & 1.00 (1.00) & 1.00 (1.00) \\
-\midrule
-Str.\ pi-SAE     & 0.41 (0.35) & 0.52 (0.46) \\
-\textit{Str.\ pi-SAE E2E} & \textit{pending} & \textit{pending} \\
+IOI          & 0.19 (0.19) & \textbf{1.00 (1.00)} \\
+Gender bias  & 0.62 (0.52) & \textbf{1.00 (1.00)} \\
+Greater-than & 0.93 (0.28) & \textbf{1.00 (1.00)} \\
+SVA          & 0.92 (0.00) & \textbf{1.00 (1.00)} \\
+Hypernymy    & 0.07 (0.02) & \textbf{0.97 (0.90)} \\
+Capitals$^\dagger$ & 0.12 (---) & \textbf{0.51 (0.26)} \\
 \bottomrule
 \end{tabular}
 }
 
 \vspace{0.3em}
-{\scriptsize All results: additive intervention, layer 8.}
+{\scriptsize $^\dagger$182 classes, 190 examples ($\approx$1/class) --- data limitation, not method failure.}
+
+\vspace{0.3em}
+{\scriptsize All results: additive intervention, layer 8. Capitals from RAVEL benchmark.}
 \end{column}
 \end{columns}
 \end{frame}

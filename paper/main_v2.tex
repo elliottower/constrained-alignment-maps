@@ -1,7 +1,7 @@
 \documentclass{article}
 
 % TMLR format
-\usepackage[accepted]{tmlr}
+\usepackage[preprint]{tmlr}
 
 \newcommand{\openreview}{\url{https://openreview.net/forum?id=XXXX}}
 \def\month{06}
@@ -115,8 +115,9 @@ five \emph{never} do. Grokked modular addition returns $\IIA = 0.0$ under
 linear DAS despite having learned the correct algorithm, while memorized
 models achieve $\IIA \geq 0.86$ without geometric structure---demonstrating
 that IIA alone cannot distinguish genuine causal variables from lookup tables.
-A Structured pi-SAE recovers nonlinear causal variables where DAS fails,
-achieving IIA~=~0.97 on GPT-2 hypernymy at $k{=}1$ (DAS: 0.07).
+A Structured pi-SAE with end-to-end intervention training recovers nonlinear
+causal variables where DAS fails, achieving strict IIA~$\geq 0.90$ on five of
+six GPT-2 language tasks at $k{=}1$ (Table~\ref{tab:nlp_results}).
 
 Beyond the atlas, we ask \textbf{how does grokking create causal structure?}
 Architecture ablations show that nonlinearity is necessary but attention is
@@ -676,38 +677,43 @@ capitals. Table~\ref{tab:nlp_results} reports the headline result.
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{lcccc}
 \toprule
-\textbf{Method} & \multicolumn{2}{c}{\textbf{Hypernymy}} & \multicolumn{2}{c}{\textbf{Gender bias}} \\
-& $k{=}1$ & $k{=}4$ & $k{=}1$ & $k{=}4$ \\
+\textbf{Task} & \textbf{DAS} & \textbf{DAS (strict)} & \textbf{E2E} & \textbf{E2E (strict)} \\
 \midrule
-DAS              & 0.07 & 0.23 & 0.62 & 0.88 \\
-NL-DAS           & 0.72 & 0.92 & 1.00 & 1.00 \\
-Str.\ pi-SAE     & 0.58 & 0.52 & 0.41 & 0.52 \\
-\textbf{Str.\ pi-SAE E2E} & \textbf{0.97} & \textbf{0.98} & \textit{pending} & \textit{pending} \\
+IOI            & 0.19 & 0.19 & \textbf{1.00} & \textbf{1.00} \\
+Gender bias    & 0.62 & 0.52 & \textbf{1.00} & \textbf{1.00} \\
+Greater-than   & 0.93 & 0.28 & \textbf{1.00} & \textbf{1.00} \\
+SVA            & 0.92 & 0.00 & \textbf{1.00} & \textbf{1.00} \\
+Hypernymy      & 0.07 & 0.02 & \textbf{0.97} & \textbf{0.90} \\
+Capitals$^\dagger$ & 0.12 & ---  & \textbf{0.51} & \textbf{0.26} \\
 \bottomrule
 \end{tabular}
-\caption{Standard IIA on GPT-2 language tasks (layer~8, additive intervention).
-Structured pi-SAE with E2E training achieves 0.97 standard IIA on hypernymy at
-$k{=}1$, where DAS gets 0.07 and even NL-DAS gets only 0.72. Strict IIA
-(argmax = source token) is 0.90 at $k{=}1$.}
+\caption{Standard and strict IIA at $k{=}1$ on six GPT-2 language tasks
+(layer~8, additive intervention). Structured pi-SAE with E2E training
+dominates DAS on all six tasks. $^\dagger$Capitals has 182 classes with
+only 190 examples ($\approx$1 per class), limiting classifier training.}
 \label{tab:nlp_results}
 \end{table}
 
-On hypernymy, the Structured pi-SAE with E2E training achieves standard
-IIA~=~0.97 at $k{=}1$---$14\times$ better than DAS (0.07) and $1.35\times$
-better than NL-DAS (0.72). Under the stricter argmax criterion (source token
-must beat all 50{,}000 vocabulary tokens), IIA remains 0.90. The E2E objective
-closes the gap between training and evaluation by directly optimizing the
-quantity we measure.
+Table~\ref{tab:nlp_results} shows that Structured pi-SAE with E2E training
+dominates DAS on all six GPT-2 tasks at $k{=}1$. On five of six tasks, E2E
+achieves strict IIA $\geq 0.90$; on IOI, gender bias, greater-than, and SVA
+it reaches 1.00. The sole exception is capitals (fact retrieval), where
+E2E achieves 0.51 standard / 0.26 strict IIA---still $4\times$ better than
+DAS (0.12)---but the dataset contains 182 country--capital classes with only
+190 examples ($\approx$1 per class), severely limiting classifier training.
+This task originates from the RAVEL benchmark \citep{huang2024ravel} and
+appears in faithfulness evaluations \citep{prakash2024mib}; the low absolute
+IIA reflects a data limitation rather than a method failure.
 
-On the Indirect Object Identification task \citep{wang2022interpretability},
-DAS achieves IIA~=~0.30 at $k{=}2$, consistent with the IOI causal
-variable spanning multiple attention heads.  Structured pi-SAE achieves
-$0.98$.  NL-DAS achieves $1.00$, but the diversity ratio $\rho \approx 0$
-(vs.\ $\rho \approx 0.91$ for the pi-SAE) exposes it as vacuous
-(Table~\ref{tab:nldas_vacuous}).  The identifiability guarantee
-(Proposition~\ref{prop:recovery}) applies: each IOI sentence has a distinct
-indirect object label, the per-label means $\mu_y$ are well-separated, and
-the ELBO reconstruction constraint forces approximate decoder injectivity.
+On hypernymy, E2E achieves IIA~=~0.97 at $k{=}1$---$14\times$ better than
+DAS (0.07). Under the strict criterion (source token must beat all 50{,}000
+vocabulary tokens), IIA remains 0.90. Note that DAS's strict IIA on SVA is
+exactly 0.00 despite a standard IIA of 0.92, revealing that DAS shifts
+probability mass toward the correct token without ever making it the argmax.
+
+On IOI \citep{wang2022interpretability}, NL-DAS achieves IIA~$= 1.00$,
+but the diversity ratio $\rho \approx 0$ (vs.\ $\rho \approx 0.91$ for the
+pi-SAE) exposes it as vacuous (Table~\ref{tab:nldas_vacuous}).
 
 \subsection{Unconstrained nonlinear DAS is vacuous}
 \label{sec:nldas_vacuous}

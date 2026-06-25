@@ -4,19 +4,8 @@ Mapping the boundary between linear and nonlinear causal variables in neural net
 
 ## Slides
 
-Two slide decks, one per paper:
-
-| Deck | PDF | Source |
-|------|-----|--------|
-| **Structured pi-SAE** (Paper 2) | [structured_pi_sae_v1.pdf](slides/structured_sae/structured_pi_sae_v1.pdf) | [.tex](slides/structured_sae/structured_pi_sae_v1.tex) |
-| **Grokking geometry** (Paper 1) | [grokking_geometry_v1.pdf](slides/grokking/grokking_geometry_v1.pdf) | [.tex](slides/grokking/grokking_geometry_v1.tex) |
-| Combined (older) | [v4.pdf](slides/combined/grassmannian_atlas_slides_v4.pdf) | [.tex](slides/combined/grassmannian_atlas_slides_v4.tex) |
-
-To compile:
-```bash
-cd slides/structured_sae
-pdflatex structured_pi_sae_v1.tex
-```
+- **Grokking geometry** — [PDF](slides/grokking/grokking_geometry_v1.pdf) / [source](slides/grokking/grokking_geometry_v1.tex)
+- **Structured pi-SAE** — [PDF](slides/structured_sae/structured_pi_sae_v1.pdf) / [source](slides/structured_sae/structured_pi_sae_v1.tex)
 
 ## Paper
 
