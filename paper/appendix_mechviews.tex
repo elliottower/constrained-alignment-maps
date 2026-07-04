@@ -1,0 +1,99 @@
+% Mechanistic Views Audit — standalone \input{} file
+% Requires: booktabs, array, multirow, xcolor, cleveref, float packages in parent document
+
+\section{Mechanistic Views Classification}
+\label{app:mechviews}
+
+Mechanistic Views \citep{tower2026mechviews} classifies mechanistic claims across five
+axes: \emph{ontology} (what kind of entity), \emph{identity} (when two
+descriptions pick out the same thing), \emph{evidence} (what measurements
+warrant the claim), \emph{formalism} (what math expresses it), and
+\emph{target} (what phenomenon is explained). Nine views partition the space
+of mechanistic claims; a given paper may employ several views, either
+deliberately or through implicit \emph{view slides}---unannounced shifts
+between ontological commitments. This appendix classifies the paper's central
+claims and flags the most consequential slides.
+
+\paragraph{Dominant view and key slides.}
+The paper's primary ontology is the \textbf{subspace view}: the causal
+variable is a point on $\Gr(k,d)$, and the atlas systematically tests whether
+each operation's causal variable lives on this manifold. The formalism
+($\Gr(k,d)$, geodesic distance, principal angles) is fully native to this
+view. However, three consequential view slides occur:
+
+\emph{Subspace $\to$ structural view} (\S\ref{sec:gauge_freedom},
+\S\ref{sec:svd_vs_das}). The subspace degeneracy result---10 seeds produce
+orthogonal subspaces that all support $\IIA \geq 0.94$---undermines subspace
+\emph{identity} as an axis of comparison. The paper responds by shifting to a
+structural view: what matters is not which subspace, but the gauge-invariant
+information flow through the weight matrices (SVD predicts $\IIA = 0.999$
+without optimization). This slide is acknowledged in the text (``the identity
+of a causal subspace is not a meaningful property'') but not framed as a view
+change, which it is: the relevant entity shifts from a specific point on
+$\Gr(k,d)$ to an orbit under the gauge group.
+
+\emph{Subspace $\to$ process view} (\S\ref{sec:mechanism}). The mechanistic
+analysis shifts from asking ``what is the causal variable?'' (subspace view)
+to ``how does it emerge?'' (process view). The AGOP double-peak, spectral
+compression, and Fourier lag analyses all operate in the process view with
+dynamical-systems formalism. This is a natural and productive shift, but it
+means the mechanistic section does not further validate the subspace claims---it
+explains a different aspect of the same phenomenon.
+
+\emph{Contrastive view as implicit methodology.} The memorization artifact
+analysis (\S\ref{sec:memorization}) and NL-DAS vacuity analysis
+(\S\ref{sec:nldas_vacuous}) are inherently contrastive: they gain evidential
+force by contrasting genuine causal structure with artifactual alternatives.
+The 4-level hierarchy itself is a contrastive framework (each level defines
+what the level below fails to exclude). This contrastive methodology is
+pervasive but never named as a view.
+
+\paragraph{The productive tension.}
+The paper's most important finding from a Mechanistic Views perspective is that its
+own primary ontology is self-undermining: the subspace view defines the atlas
+and motivates the Grassmannian formalism, but the degeneracy result shows that
+subspace identity is gauge-dependent. This is not a flaw---it is the paper's
+strongest argument for the structural view (weight-space SVD, gauge-invariant
+composites like $W_Q W_K^\top$) as the correct level of description for
+causal geometry. The 4-level evaluation hierarchy maps directly onto the
+evidence axis of Mechanistic Views, providing a graduated standard for when
+patching-based evidence (levels 1--2) must be supplemented by distributional
+(level 3) and structural (level 4) measurements.
+
+\vspace{1em}
+\begin{table}[H]
+\centering
+\caption{Mechanistic Views audit of this paper's central claims.
+Dominant view in bold; $\to$ indicates a view slide within the claim.}
+\label{tab:mechviews}
+\small
+\setlength{\tabcolsep}{4.5pt}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}p{4.8cm}p{1.8cm}p{1.8cm}p{2.0cm}p{1.6cm}p{1.4cm}@{}}
+\toprule
+\textbf{Claim} & \textbf{Ontology} & \textbf{Identity} & \textbf{Evidence} & \textbf{Formalism} & \textbf{Target} \\
+\midrule
+Three-class atlas partition
+  & \textbf{Subspace} & Subsp.\ overlap & Patch, Probe & $\Gr(k,d)$ & Behavior \\
+Grokking governs the partition
+  & Process & Func.\ equiv. & Train.\ dyn. & Dyn.\ sys. & Algorithm \\
+DAS subspace degeneracy (10 seeds)
+  & Sub$\to$Struct & Gauge inv. & Patch, Weight & $\Gr(k,d)$ & Repr. \\
+SVD predicts causal geometry
+  & \textbf{Structural} & Gauge inv. & Weight & $\Gr(k,d)$ & Repr. \\
+Memorization artifacts ($\IIA$ w/o structure)
+  & \textbf{Contrastive} & Func.\ equiv. & Patch & $\Gr$, Func. & Behavior \\
+NL-DAS vacuity (diversity ratio)
+  & Contrastive & Func.\ equiv. & Patch & Functions & Behavior \\
+Struct.\ pi-SAE recovers NL variables
+  & Subspace & Func.\ equiv. & Patch, Probe & Functions & Algorithm \\
+DMF+ReLU groks 18$\times$ faster
+  & Process & Func.\ equiv. & Train.\ dyn. & Dyn.\ sys. & Capacity \\
+Fourier structure lags generalization
+  & Process & --- & TD, Weight & Dyn.\ sys. & Algorithm \\
+4-level evaluation hierarchy
+  & --- & --- & Patch, Probe & Functions & Behavior \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1.0}
+\end{table}

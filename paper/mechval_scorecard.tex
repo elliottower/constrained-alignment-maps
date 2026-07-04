@@ -1,0 +1,112 @@
+% MechVal Scorecard — standalone \input{} file
+% Requires: booktabs, array, multirow, xcolor, amssymb packages in parent document
+%
+% Usage: \input{mechval_scorecard}
+
+\definecolor{confirmed}{HTML}{2E7D32}
+\definecolor{partial}{HTML}{E65100}
+\definecolor{untested}{HTML}{757575}
+\definecolor{inconclusive}{HTML}{9E9E9E}
+
+\providecommand{\cmark}{{\color{confirmed}\checkmark}}%
+\providecommand{\pmark}{{\color{partial}$\circ\mkern-7mu/$}}%
+\providecommand{\umark}{{\color{untested}?}}%
+\providecommand{\xmark}{{\color{red}$\times$}}%
+
+\section{Mechanistic Validity Scorecard}
+\label{app:mechval}
+
+Mechanistic Validity \citep{tower2026mechval} provides a systematic framework
+for evaluating whether mechanistic claims about neural networks are warranted
+by available evidence. The framework organizes 30 criteria into five types:
+\emph{construct} validity (whether the claimed mechanism is well-defined and
+falsifiable), \emph{measurement} validity (whether the metrics reliably detect
+the mechanism), \emph{internal} validity (whether interventions establish
+necessity and sufficiency), \emph{external} validity (whether findings
+generalize across prompts, tasks, and models), and \emph{interpretive} validity
+(whether the level of description matches the evidence). Each criterion
+receives one of four ratings: \cmark~Confirmed, \pmark~Partially confirmed,
+\umark~Untested, or \xmark~Disconfirmed. The overall verdict reflects the
+strongest tier of evidence reached: \emph{Falsifiable} (construct criteria
+met), \emph{Causally Suggestive} (some internal criteria met),
+\emph{Mechanistically Supported} (necessity and sufficiency established),
+\emph{Triangulated} (multiple independent evidence lines converge), or
+\emph{Validated} (cross-model replication with independent methods).
+
+We evaluate both central claims of this paper. Claim~1 (the Grassmannian atlas
+partitions operations into three geometric classes) reaches \textbf{Triangulated}:
+equivariance testing, SVD prediction, and training dynamics provide independent
+converging evidence. Claim~2 (structured pi-SAE recovers nonlinear causal
+variables) reaches \textbf{Mechanistically Supported}: patching establishes
+necessity and sufficiency, though independent non-IIA validation is still needed.
+
+\vspace{1em}
+\begin{table}[H]
+\centering
+\caption{Mechanistic Validity scorecard (Tower, 2026). Each criterion is rated as
+\cmark~Confirmed, \pmark~Partially confirmed, \umark~Untested, or
+\xmark~Disconfirmed. Claim~1 reaches \textbf{Triangulated} (multiple
+converging independent evidence lines); Claim~2 reaches
+\textbf{Mechanistically Supported} (necessity + sufficiency established).}
+\label{tab:mechval}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llcc@{}}
+\toprule
+\textbf{Type} & \textbf{Criterion} & \textbf{Claim 1: Atlas} & \textbf{Claim 2: pi-SAE} \\
+\midrule
+\multirow{5}{*}{\rotatebox[origin=c]{90}{\textsc{Construct}}}
+ & C1~~Falsifiability          & \cmark & \cmark \\
+ & C2~~Structural plausibility & \cmark & \cmark \\
+ & C3~~Convergent validity     & \cmark & \pmark \\
+ & C4~~Discriminant validity   & \cmark & \cmark \\
+ & C5~~Nomological validity    & \pmark & \pmark \\
+\midrule
+\multirow{6}{*}{\rotatebox[origin=c]{90}{\textsc{Measurement}}}
+ & M1~~Reliability             & \pmark & \pmark \\
+ & M2~~Baseline separation     & \cmark & \cmark \\
+ & M3~~Stability               & \pmark & \pmark \\
+ & M4~~Calibration             & \cmark & \cmark \\
+ & M5~~Sensitivity             & \cmark & \cmark \\
+ & M6~~Invariance              & \pmark & \pmark \\
+\midrule
+\multirow{8}{*}{\rotatebox[origin=c]{90}{\textsc{Internal}}}
+ & I1~~Necessity               & \cmark & \cmark \\
+ & I2~~Sufficiency             & \pmark & \cmark \\
+ & I3~~Specificity             & \cmark & \cmark \\
+ & I4~~Double dissociation     & \cmark & \pmark \\
+ & I5~~Confound control        & \pmark & \cmark \\
+ & I6~~Epistatic interaction   & \pmark & \cmark \\
+ & I7~~Rescue reversibility    & \pmark & \umark \\
+ & I10~Confounding sensitivity & \pmark & \pmark \\
+\midrule
+\multirow{6}{*}{\rotatebox[origin=c]{90}{\textsc{External}}}
+ & E1~~Intervention reach      & \cmark & \cmark \\
+ & E2~~Prompt generalization   & \pmark & \cmark \\
+ & E3~~Cross-task               & \cmark & \cmark \\
+ & E4~~Cross-model             & \umark & \pmark \\
+ & E5~~Graded response         & \cmark & \cmark \\
+ & E6~~Novel prediction        & \cmark & \pmark \\
+\midrule
+\multirow{5}{*}{\rotatebox[origin=c]{90}{\textsc{Interp.}}}
+ & V1~~Level declaration       & \cmark & \cmark \\
+ & V2~~Level-evidence match    & \cmark & \cmark \\
+ & V3~~Alternative level       & \pmark & \pmark \\
+ & V4~~Anthropomorphism check  & \cmark & \cmark \\
+ & V5~~Scope declaration       & \pmark & \pmark \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Confirmed / Partial / Untested}} & 17 / 12 / 1 & 18 / 11 / 1 \\
+\multicolumn{2}{@{}l}{\textbf{Verdict}} & \textbf{Triangulated} & \textbf{Mech.\ Supported} \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.5em}
+\raggedright\footnotesize
+\textbf{Key gaps.}
+Claim~1: cross-model generalization untested (single architecture);
+stochastic grokking rests on 2 seeds; SVD vs.\ DAS not dimension-matched.
+Claim~2: no independent validation beyond IIA paradigm;
+hyperparameter sensitivity not ablated; VAE training seed variance not reported.
+\textbf{Advancing to Validated} requires cross-architecture atlas replication
+and an independent (non-IIA) validation of the pi-SAE latent structure.
+\end{table}

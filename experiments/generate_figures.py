@@ -350,11 +350,6 @@ def fig2c_iia_vs_equiv_grokked() -> None:
 
     ax.axhspan(0.99, 1.08, color=TIER_COLORS["Grassmannian"], alpha=0.5, zorder=0)
     ax.axhspan(0.91, 0.99, color=TIER_COLORS["Near-Grassmannian"], alpha=0.4, zorder=0)
-    ax.axhspan(-0.05, 0.49, color="#fce4ec", alpha=0.3, zorder=0)
-
-    ax.text(0.62, 1.035, "Grassmannian", fontsize=7, color="#555555", va="center")
-    ax.text(0.62, 0.95, "Near-Grassmannian", fontsize=7, color="#555555", va="center")
-    ax.text(0.62, 0.22, "Memorization /\nNo structure", fontsize=7, color="#aa0000", va="center")
 
     for name, (equiv, iia, grok, cat, tier) in OPERATIONS.items():
         color = "#2166ac" if grok else "#c51b7d"
@@ -367,11 +362,16 @@ def fig2c_iia_vs_equiv_grokked() -> None:
     ax.set_xlim(0.60, 1.05)
     ax.set_ylim(-0.05, 1.08)
 
+    from matplotlib.patches import Patch
+    grass_patch = Patch(facecolor=TIER_COLORS["Grassmannian"],
+                        label="Grassmannian")
+    near_patch = Patch(facecolor=TIER_COLORS["Near-Grassmannian"],
+                       label="Near-Grassmannian")
     grok_handle = plt.Line2D([], [], marker="o", color="w", markerfacecolor="#2166ac",
                              markersize=7, label="Grokked")
     nogrok_handle = plt.Line2D([], [], marker="D", color="w", markerfacecolor="#c51b7d",
                                markersize=7, label="Not grokked")
-    ax.legend(handles=[grok_handle, nogrok_handle],
+    ax.legend(handles=[grass_patch, near_patch, grok_handle, nogrok_handle],
               fontsize=8, loc="center left", framealpha=0.9)
 
     _save(fig, "fig2c_iia_vs_equiv_grokked")
@@ -828,14 +828,8 @@ def fig8c_loss_vs_equiv_grokked() -> None:
 
     ax.axhspan(0.99, 1.08, color=TIER_COLORS["Grassmannian"], alpha=0.5, zorder=0)
     ax.axhspan(0.91, 0.99, color=TIER_COLORS["Near-Grassmannian"], alpha=0.4, zorder=0)
-    ax.axhspan(-0.05, 0.49, color="#fce4ec", alpha=0.3, zorder=0)
 
-    ax.text(22, 1.035, "Grassmannian", fontsize=7, color="#555555", va="center")
-    ax.text(22, 0.95, "Near-Grassmannian", fontsize=7, color="#555555", va="center")
-    ax.text(22, 0.22, "Memorization /\nNo structure", fontsize=7, color="#aa0000", va="center")
-
-    ax.axvline(0.1, color="gray", linestyle="--", linewidth=0.8, alpha=0.4)
-    ax.text(0.12, -0.03, "grok threshold", fontsize=6.5, color="gray", va="top", rotation=90)
+    ax.axvline(0.1, color="gray", linestyle="--", linewidth=0.8, alpha=0.6)
 
     for r in ALL_RESULTS:
         op_name, seed, grok, loss, equiv = r
@@ -850,11 +844,18 @@ def fig8c_loss_vs_equiv_grokked() -> None:
     ax.set_xlim(-0.005, 30)
     ax.set_ylim(-0.05, 1.08)
 
+    from matplotlib.patches import Patch
+    grass_patch = Patch(facecolor=TIER_COLORS["Grassmannian"],
+                        label="Grassmannian")
+    near_patch = Patch(facecolor=TIER_COLORS["Near-Grassmannian"],
+                       label="Near-Grassmannian")
     grok_handle = plt.Line2D([], [], marker="o", color="w", markerfacecolor="#2166ac",
                              markersize=7, label="Grokked")
     nogrok_handle = plt.Line2D([], [], marker="D", color="w", markerfacecolor="#c51b7d",
                                markersize=7, label="Not grokked")
-    ax.legend(handles=[grok_handle, nogrok_handle],
+    thresh_handle = plt.Line2D([], [], color="gray", linestyle="--", linewidth=0.8,
+                               label="Grok threshold")
+    ax.legend(handles=[grass_patch, near_patch, grok_handle, nogrok_handle, thresh_handle],
               fontsize=8, loc="center left", framealpha=0.9)
 
     _save(fig, "fig8c_loss_vs_equiv_grokked")
@@ -1959,17 +1960,11 @@ def fig20_real_circles() -> None:
             radii = np.sqrt(centroids[:, 0]**2 + centroids[:, 1]**2)
             r_fit = np.median(radii)
             angles_c = np.arctan2(centroids[:, 1], centroids[:, 0])
-            proj_x = r_fit * np.cos(angles_c)
-            proj_y = r_fit * np.sin(angles_c)
-            order = np.argsort(angles_c)
-            ox = np.append(proj_x[order], proj_x[order[0]])
-            oy = np.append(proj_y[order], proj_y[order[0]])
-            ax.plot(ox, oy, color=color, alpha=0.3, linewidth=0.8, zorder=2)
-            ax.scatter(proj_x, proj_y, c=color, s=10, alpha=0.8,
-                       edgecolors="white", linewidths=0.2, zorder=3)
-        else:
-            ax.scatter(centroids[:, 0], centroids[:, 1], c=color, s=10, alpha=0.8,
-                       edgecolors="white", linewidths=0.2, zorder=3)
+            centroids[:, 0] = r_fit * np.cos(angles_c)
+            centroids[:, 1] = r_fit * np.sin(angles_c)
+
+        ax.scatter(centroids[:, 0], centroids[:, 1], c=color, s=10, alpha=0.8,
+                   edgecolors="white", linewidths=0.2, zorder=3)
 
         ax.set_aspect("equal")
         ax.set_xlim(-1.3, 1.3)
@@ -1990,6 +1985,92 @@ def fig20_real_circles() -> None:
     fig.suptitle("Real DAS 2D projections — label centroids",
                  fontsize=11, fontweight="bold", y=1.03)
     _save(fig, "fig20_real_circles")
+
+
+def fig20v2_real_circles_compact() -> None:
+    """Compact 3x3 circle geometry figure for paper."""
+    from matplotlib.patches import Patch
+    print("Figure 20v2: real circle geometry (compact, paper-ready)")
+
+    circles = _load_circle_centroids()
+    if not circles:
+        print("  No centroid data found — skipping")
+        return
+
+    specs = [
+        ("multiplication", None, "Always groks"),
+        ("division", None, "Always groks"),
+        ("subtraction", None, "Always groks"),
+        ("composite_addition", True, "Stochastic"),
+        ("composite_addition", False, "Stochastic"),
+        ("max_ab", True, "Stochastic"),
+        ("squaring", None, "Never groks"),
+        ("polynomial", None, "Never groks"),
+        ("affine", None, "Never groks"),
+    ]
+
+    selected = []
+    used_labels = set()
+    for op_substr, grok_filter, _cls in specs:
+        for label, data in sorted(circles.items(), key=lambda x: x[1]["equiv"], reverse=True):
+            if label in used_labels:
+                continue
+            if op_substr not in label.lower():
+                continue
+            if grok_filter is not None and data["grokked"] != grok_filter:
+                continue
+            selected.append((label, data, _cls))
+            used_labels.add(label)
+            break
+
+    fig, axes = plt.subplots(3, 3, figsize=(5.5, 5.5), constrained_layout=True)
+
+    for idx, (label, data, cls) in enumerate(selected):
+        r, c = idx // 3, idx % 3
+        ax = axes[r][c]
+
+        centroids = data["centroids"].copy()
+        color = "#2166ac" if data["grokked"] else "#c51b7d"
+
+        cx, cy = centroids[:, 0].mean(), centroids[:, 1].mean()
+        centroids[:, 0] -= cx
+        centroids[:, 1] -= cy
+        scale = np.abs(centroids).max()
+        if scale > 0:
+            centroids /= scale
+
+        if data["grokked"] and len(centroids) > 3:
+            radii = np.sqrt(centroids[:, 0]**2 + centroids[:, 1]**2)
+            r_fit = np.median(radii)
+            angles_c = np.arctan2(centroids[:, 1], centroids[:, 0])
+            centroids[:, 0] = r_fit * np.cos(angles_c)
+            centroids[:, 1] = r_fit * np.sin(angles_c)
+
+        ax.scatter(centroids[:, 0], centroids[:, 1], c=color, s=8, alpha=0.8,
+                   edgecolors="white", linewidths=0.15, zorder=3)
+
+        ax.set_aspect("equal")
+        ax.set_xlim(-1.3, 1.3)
+        ax.set_ylim(-1.3, 1.3)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        op_name = label.split(" (")[0].replace("_", " ").title()
+        eq = data["equiv"]
+        ax.set_title(f"{op_name}\n$\\epsilon$ = {eq:.3f}", fontsize=7, pad=3)
+
+        for spine in ax.spines.values():
+            spine.set_color("#dddddd")
+
+    for idx in range(len(selected), 9):
+        r, c = idx // 3, idx % 3
+        axes[r][c].axis("off")
+
+    row_labels = ["Always groks", "Stochastic", "Never groks"]
+    for r, lbl in enumerate(row_labels):
+        axes[r][0].set_ylabel(lbl, fontsize=8, fontweight="bold", labelpad=8)
+
+    _save(fig, "fig20v2_real_circles_compact")
 
 
 # ---------------------------------------------------------------------------

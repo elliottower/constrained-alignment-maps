@@ -1,0 +1,369 @@
+% Supplementary Material — standalone \input{} file
+% Requires: amsmath, amssymb, booktabs, array, float, enumitem packages in parent
+
+\section{Extended Derivations}
+\label{app:derivations}
+
+\subsection{Geodesic distance on the Grassmannian}
+\label{app:geodesic}
+
+The Grassmannian $\Gr(k,d)$ admits a canonical Riemannian metric inherited
+from the ambient space of $d \times k$ orthonormal frames. Given two
+subspaces $[Q_1], [Q_2] \in \Gr(k,d)$ represented by orthonormal bases
+$Q_1, Q_2 \in \R^{d \times k}$, the principal angles
+$0 \leq \theta_1 \leq \cdots \leq \theta_k \leq \pi/2$ are defined via
+the singular value decomposition
+\begin{equation}
+Q_1^\top Q_2 = U \, \diag(\cos\theta_1, \ldots, \cos\theta_k) \, V^\top.
+\label{eq:principal_angles_svd}
+\end{equation}
+The geodesic distance under the canonical metric is
+\begin{equation}
+\dgr([Q_1],[Q_2]) = \left(\sum_{i=1}^k \theta_i^2\right)^{1/2}.
+\label{eq:geodesic_full}
+\end{equation}
+This distance is gauge-invariant: for any $R_1, R_2 \in O(k)$,
+$\dgr([Q_1 R_1], [Q_2 R_2]) = \dgr([Q_1], [Q_2])$, because replacing
+$Q_j$ by $Q_j R_j$ yields the same column span. The maximum distance
+between two $k$-dimensional subspaces is $\pi\sqrt{k}/2$, achieved when
+all principal angles equal $\pi/2$ (orthogonal subspaces).
+
+For random subspaces drawn uniformly from the Haar measure on $\Gr(k,d)$,
+the expected pairwise distance concentrates around
+$\pi\sqrt{k}/2 \cdot \sqrt{1 - k/d}$ when $k \ll d$
+\citep{edelman1998geometry, absil2008optimization}. In our setting
+($k = 2$, $d = 128$), this gives an expected random distance of
+$\approx 2.20$ radians, consistent with the observed inter-seed distances
+of $[1.93, 2.19]$ (\S\ref{sec:gauge_freedom}).
+
+\subsection{Equivariance test statistic}
+\label{app:equiv_test}
+
+For an operation with a cyclic group action $a \mapsto a + g \pmod{p}$,
+we test whether the DAS subspace respects the group symmetry. Let
+$z(a,b) = Q^\top h(a,b) \in \R^k$ be the DAS projection. The equivariance
+condition requires that the group action on the input induces a
+consistent rotation in the projected space:
+\begin{equation}
+z(a + g, b) = R_g \, z(a, b) + t_g \quad \forall\, a, b, g
+\label{eq:equiv_condition}
+\end{equation}
+for some rotation $R_g \in O(k)$ and translation $t_g$ depending only on
+$g$, not on $(a,b)$.
+
+For $k = 2$ and cyclic groups $\Z_p$, we parameterize $R_g$ as a rotation by
+angle $\phi_g$. We estimate $\phi_g$ for each $g$ by computing the
+median angular displacement across all $(a,b)$ pairs:
+\begin{equation}
+\hat\phi_g = \mathrm{median}_{(a,b)} \;\angle\bigl(z(a{+}g, b) - \bar{z},\;
+z(a, b) - \bar{z}\bigr)
+\label{eq:angle_estimate}
+\end{equation}
+where $\bar{z}$ is the grand mean of all projections and $\angle(\cdot, \cdot)$
+denotes the signed angle. An input $(a,b)$ is counted as equivariant for shift
+$g$ if $|\angle - \hat\phi_g| < \varepsilon$ (we use $\varepsilon = 2\pi/p$,
+one ``slot'' of angular resolution). The reported equivariance fraction is
+\begin{equation}
+\text{Equiv} = \frac{1}{|\mathcal{T}|} \sum_{(a,b,g) \in \mathcal{T}}
+\mathbf{1}\bigl[|\angle(z(a{+}g,b), z(a,b)) - \hat\phi_g| < \varepsilon\bigr]
+\label{eq:equiv_fraction}
+\end{equation}
+where $\mathcal{T}$ is the set of all valid (input, shift) triples on the
+test set. Random orthogonal subspaces of the same dimension achieve
+equivariance $< 1\%$ across all operations tested, confirming that the
+metric has strong discriminative power.
+
+\subsection{Diversity ratio}
+\label{app:diversity_ratio}
+
+The intervention diversity ratio $\rho$ (Eq.~\ref{eq:diversity_ratio})
+measures whether an encoder-decoder intervention preserves input-specific
+information or collapses to a class-conditional lookup table.
+
+For a set of intervened activations $\{h'_i\}$ sharing source label $y_s$,
+the within-class standard deviation is
+$\sigma_{y_s} = \bigl(\frac{1}{n_{y_s}} \sum_i \|h'_i - \bar{h}'_{y_s}\|^2
+\bigr)^{1/2}$
+where $\bar{h}'_{y_s}$ is the mean intervened activation for source label $y_s$.
+The denominator uses the same statistic computed on natural (non-intervened)
+activations sharing the same label. The ratio $\rho = \mathbb{E}_{y_s}[\sigma_{y_s}^{\text{iv}}]
+/ \mathbb{E}_{y_s}[\sigma_{y_s}^{\text{nat}}]$ ranges from 0 (complete collapse: all
+interventions for the same source produce the same activation) to
+$\approx 1$ (intervention preserves the natural within-class variability).
+
+Values of $\rho \gg 1$ are possible in principle (the intervention adds noise),
+but in practice indicate that the decoder is amplifying base-specific variation.
+The observed NL-DAS values ($\rho \approx 0.05$ on IOI) confirm near-complete
+collapse; the Structured pi-SAE values ($\rho \approx 0.89$) confirm
+preservation of nuisance information.
+
+
+\section{Hyperparameter Tables}
+\label{app:hyperparameters}
+
+\subsection{Grokking model training}
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Architecture & 1-layer transformer \\
+$d_\text{model}$ & 128 \\
+$n_\text{heads}$ & 4 \\
+$d_\text{head}$ & 32 \\
+$d_\text{MLP}$ & 512 \\
+Optimizer & AdamW \\
+Learning rate & $10^{-3}$ \\
+Weight decay & 1.0 \\
+Batch size & Full batch \\
+Train/test split & 30\% / 70\% \\
+Training epochs & 25{,}000--80{,}000 (operation-dependent) \\
+Deeper models & 1.5$\times$ epochs for 2L and 4L \\
+Grokking criterion & Test cross-entropy $< 0.1$ \\
+Moduli tested & $p \in \{53, 97, 113, 211\}$ \\
+Depths tested & $n_\text{layers} \in \{1, 2, 4\}$ \\
+\bottomrule
+\end{tabular}
+\caption{Grokking model training hyperparameters. All operations use the same
+architecture and optimizer; only epoch count varies.}
+\label{tab:hp_grokking}
+\end{table}
+
+\subsection{DAS fitting}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Optimizer & Adam \\
+Learning rate & $10^{-3}$ \\
+Gradient steps & 200 \\
+Batch size & 16 interchange pairs \\
+$k$ values swept & $\{2, 4, 6, 8, 10, 12, 16, 20, 24, 32\}$ \\
+Initialization & Random orthonormal $Q \in \R^{d \times k}$ \\
+Intervention site & Residual stream (post-MLP, layer 0) \\
+Hard-example selection & $y_b \neq y_s$, both correctly classified \\
+\bottomrule
+\end{tabular}
+\caption{DAS fitting hyperparameters. Each $k$ value is an independent
+optimization, not a nested subspace.}
+\label{tab:hp_das}
+\end{table}
+
+\subsection{Structured pi-SAE}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Encoder & 2-layer MLP ($d_\text{model} \to 128 \to z$), ReLU \\
+Decoder & 2-layer MLP ($z \to 128 \to d_\text{model}$), ReLU \\
+$k$ (causal latent dim) & $\{2, 4, 8\}$ \\
+$m$ (nuisance latent dim) & 15 \\
+Sparsity & $L_1$ on $z_\text{causal}$, expansion $8\times$ \\
+Prior & $p(z_\text{causal} \mid y) = \mathcal{N}(\mu_y, \sigma_y^2 I)$ \\
+$\beta$ (KL weight) & 1.0 \\
+$\alpha$ (classification weight) & 10.0 \\
+$\lambda$ ($L_1$ coefficient) & 1.0 \\
+Optimizer & Adam, lr $= 10^{-3}$ \\
+Training epochs & 300 (reconstruction + classification) \\
+E2E phase & 200 warmup + E2E intervention CE \\
+E2E intervention & Additive: $h' = h_b + \text{dec}(z_\text{swap}) - \text{dec}(z_\text{orig})$ \\
+\bottomrule
+\end{tabular}
+\caption{Structured pi-SAE hyperparameters. The E2E phase is used for
+GPT-2 language tasks; grokking models use reconstruction + classification only.}
+\label{tab:hp_pisae}
+\end{table}
+
+\subsection{NL-DAS baseline}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Encoder $f$ & 2-layer MLP ($d \to 256 \to d$), ReLU \\
+Decoder $g$ & 2-layer MLP ($d \to 256 \to d$), ReLU \\
+$Q$ & Learned jointly, $\R^{d \times k}$ \\
+Training objective & Interchange loss only (no reconstruction) \\
+NL-DAS+recon variant & $+ \lambda_\text{recon} \|g(f(h)) - h\|^2$, $\lambda = 0.1$ \\
+Optimizer & Adam, lr $= 10^{-3}$ \\
+Training steps & 200 \\
+\bottomrule
+\end{tabular}
+\caption{NL-DAS hyperparameters. Architecture matches the pi-SAE encoder
+to ensure a fair capacity comparison.}
+\label{tab:hp_nldas}
+\end{table}
+
+
+\section{Per-Operation Atlas Data}
+\label{app:atlas_data}
+
+Table~\ref{tab:full_atlas} reports the complete atlas measurements for all
+14 operations at $p = 113$ (1-layer), including metrics omitted from the
+main text for space.
+
+\vspace{1em}
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}lcccccccc@{}}
+\toprule
+\textbf{Operation} & \textbf{Grok} & \textbf{Loss} & \textbf{IIA}$_{k{=}2}$ &
+\textbf{IIA}$_{k{=}4}$ & \textbf{IIA}$_{k{=}8}$ & $k^*$ &
+\textbf{Equiv.} & \textbf{Class} \\
+\midrule
+\multicolumn{9}{l}{\textit{Always Grassmannian}} \\
+Multiplication   & \checkmark & 0.000 & 1.000 & 1.000 & 1.000 & 2 & 0.995 & Always \\
+Subtraction      & \checkmark & 0.000 & 1.000 & 1.000 & 1.000 & 2 & 1.000 & Always \\
+Division         & \checkmark & 0.000 & 1.000 & 1.000 & 1.000 & 2 & 1.000 & Always \\
+Bitwise XOR      & \checkmark & 0.003 & 1.000 & 1.000 & 1.000 & 2 & 1.000 & Always \\
+Cubic sum        & \checkmark & 0.000 & 1.000 & 1.000 & 1.000 & 2 & 1.000 & Always \\
+Sum of squares   & \checkmark & 0.005 & 1.000 & 1.000 & 1.000 & 2 & 0.987 & Always \\
+Max              & \checkmark & 0.074 & 0.960 & 1.000 & 1.000 & 2 & 0.957 & Always \\
+\midrule
+\multicolumn{9}{l}{\textit{Stochastic}} \\
+Comp.\ add.\ (orig) & \checkmark & 0.000 & --- & --- & --- & --- & 0.998 & Stochastic \\
+Comp.\ add.\ (s42)  & $\times$   & 10.21 & 0.800 & 0.860 & 0.900 & 6 & 0.110 & Stochastic \\
+Power (s137)     & \checkmark & 0.088 & 0.940 & 1.000 & 1.000 & 4 & 0.965 & Stochastic \\
+Power (s42)      & $\times$   & 1.143 & 0.980 & 1.000 & 1.000 & 2 & 0.665 & Stochastic \\
+\midrule
+\multicolumn{9}{l}{\textit{Never Grassmannian}} \\
+Cubing           & $\times$ & 9.765 & 0.857 & 1.000 & 1.000 & 4 & 0.509 & Never \\
+Squaring         & $\times$ & 7.808 & 0.857 & 1.000 & 1.000 & 4 & 0.314 & Never \\
+Abs.\ difference & $\times$ & 1.835 & 0.800 & 0.840 & 0.860 & $>$32 & 0.189 & Never \\
+Polynomial       & $\times$ & 21.55 & 0.720 & 0.780 & 0.820 & $>$32 & 0.015 & Never \\
+Affine           & $\times$ & 26.21 & 0.780 & 0.800 & 0.840 & $>$32 & 0.026 & Never \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1.0}
+\caption{Complete atlas at $p = 113$ (1-layer). IIA is reported at $k \in \{2, 4, 8\}$;
+$k^*$ is the smallest $k$ achieving IIA $\geq 0.95$. Grassmannian operations
+saturate by $k = 2$; non-Grassmannian operations show gradual growth.
+Equivariance is the fraction of test inputs satisfying the rotation
+property (\S\ref{app:equiv_test}).}
+\label{tab:full_atlas}
+\end{table}
+
+Table~\ref{tab:seed_data} reports per-seed DAS results for the 10 seeds
+of modular multiplication used in the subspace degeneracy analysis
+(\S\ref{sec:gauge_freedom}).
+
+\vspace{1em}
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{ccccc}
+\toprule
+\textbf{Seed} & \textbf{Test loss} & \textbf{IIA}$_{k{=}2}$ &
+\textbf{Equiv.} & \textbf{Mean $d_\Gr$ to others} \\
+\midrule
+42   & 0.000 & 1.000 & 0.995 & 2.08 \\
+137  & 0.000 & 0.980 & 0.991 & 2.11 \\
+256  & 0.000 & 1.000 & 0.998 & 2.05 \\
+512  & 0.000 & 0.960 & 0.989 & 2.09 \\
+1024 & 0.000 & 1.000 & 0.997 & 2.07 \\
+2024 & 0.000 & 0.940 & 0.985 & 2.13 \\
+3000 & 0.000 & 1.000 & 0.993 & 2.06 \\
+4096 & 0.000 & 0.980 & 0.990 & 2.10 \\
+5555 & 0.000 & 1.000 & 0.996 & 2.08 \\
+9999 & 0.000 & 1.000 & 0.992 & 2.09 \\
+\midrule
+\multicolumn{2}{l}{Mean $\pm$ std} & $0.986 \pm 0.020$ & $0.993 \pm 0.004$ &
+$2.09 \pm 0.02$ \\
+\bottomrule
+\end{tabular}
+\caption{Per-seed results for modular multiplication ($p = 113$, 1-layer).
+All 10 seeds grok and achieve high IIA and equivariance, but their DAS
+subspaces are near-orthogonal (mean pairwise $d_\Gr = 2.09$, compared to
+the random-subspace expectation of $\approx 2.20$ on $\Gr(2, 128)$).}
+\label{tab:seed_data}
+\end{table}
+
+
+\section{Pi-SAE Ablation Details}
+\label{app:ablation}
+
+The $2 \times 2$ ablation (Table~\ref{tab:ablation}) tests whether both
+components of the Structured pi-SAE---the label-conditional prior and the
+sparsity constraint---are individually necessary. This appendix provides
+the full per-operation breakdown including reconstruction MSE, which
+serves as a built-in falsifiability diagnostic.
+
+\vspace{1em}
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{3.5pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}l|cc|cc|cc|cc@{}}
+\toprule
+& \multicolumn{2}{c|}{\textbf{VAE}} & \multicolumn{2}{c|}{\textbf{SAE}}
+& \multicolumn{2}{c|}{\textbf{pi-VAE}} & \multicolumn{2}{c}{\textbf{Str.\ pi-SAE}} \\
+\textbf{Operation} & IIA & MSE & IIA & MSE & IIA & MSE & IIA & MSE \\
+\midrule
+\multicolumn{9}{l}{\textit{Grokked operations}} \\
+Addition        & 0.02 & 0.8 & 1.00 & 1.1  & 0.00 & 0.7  & \textbf{1.00} & 0.6 \\
+Multiplication  & 0.00 & 0.9 & 0.72 & 1.3  & 0.00 & 0.8  & \textbf{1.00} & 0.7 \\
+Quartic sum     & 0.02 & 1.0 & 0.32 & 1.5  & 0.00 & 0.9  & \textbf{1.00} & 0.8 \\
+IOI (GPT-2)     & 0.56 & 2.1 & 0.83 & 3.4  & 0.95 & 1.8  & \textbf{0.98} & 1.2 \\
+\midrule
+\multicolumn{9}{l}{\textit{Non-grokked operations}} \\
+Mixed product   & 0.03 & 18  & 0.01 & 21   & 0.01 & 16   & 0.04 & 11 \\
+Squaring        & 0.00 & 22  & 0.00 & 24   & 0.00 & 19   & 0.00 & 14 \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1.0}
+\caption{Full $2 \times 2$ ablation with reconstruction MSE. Grokked operations
+have MSE $\leq 1.2$; non-grokked operations have MSE $\geq 11$---an order of
+magnitude gap that serves as a falsifiability diagnostic. High MSE with
+near-zero IIA means the model has no structured causal variable to recover.
+The plain SAE degrades on harder operations (multiplication 0.72, quartic sum
+0.32) because without the structured prior, the sparse encoder has no target
+direction. The pi-VAE achieves IIA $\approx 0$ despite correct prior direction
+because without sparsity, the encoder distributes the causal signal across all
+dimensions.}
+\label{tab:ablation_full}
+\end{table}
+
+\paragraph{Control experiments.}
+Five controls validate that the Structured pi-SAE's success requires
+correct supervision and the causal-nuisance partition, ruling out
+trivial explanations:
+
+\vspace{0.5em}
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+\textbf{Control} & \textbf{IIA} & \textbf{Purpose} \\
+\midrule
+Random-label pi-SAE    & $\leq 0.02$  & Labels carry no causal signal \\
+Reconstruction-only ($\alpha{=}0$) & $\leq 0.005$ & No supervision to pin direction \\
+Untrained pi-SAE       & 0.000        & Architecture alone is insufficient \\
+Plain VAE (no split)   & $\leq 0.08$  & Causal-nuisance partition is necessary \\
+Random subspace (DAS)  & $\leq 0.01$  & Baseline for chance-level IIA \\
+\bottomrule
+\end{tabular}
+\caption{Control experiments on grokked multiplication ($p = 113$).
+All controls achieve near-zero IIA, confirming that the Structured pi-SAE's
+success requires correct labels, supervision, and the causal-nuisance split.}
+\label{tab:controls}
+\end{table}

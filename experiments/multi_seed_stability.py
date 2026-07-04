@@ -80,7 +80,7 @@ def utc_ts():
 
 @app.function(
     gpu="A100",
-    timeout=7200,
+    timeout=86400,
     volumes={"/results": results_vol},
 )
 def run_single_seed(operation: str, seed: int) -> dict:

@@ -933,7 +933,7 @@ def print_summary(all_results, log):
     log.info(f"  disjoint_names       => does it generalize to UNSEEN names?")
 
 
-@app.function(gpu="A100", timeout=28800, volumes={"/results": results_vol})
+@app.function(gpu="A100", timeout=86400, volumes={"/results": results_vol})
 def run_hard_mode() -> dict:
     import torch
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s")
