@@ -64,7 +64,7 @@ image = (
         "scipy",
     )
     .add_local_dir(
-        "/Users/elliottower/Documents/GitHub/factorization-circuits/reference/eap-ig-faithfulness/data",
+        "./data/mib",
         remote_path="/mib_data",
     )
 )
