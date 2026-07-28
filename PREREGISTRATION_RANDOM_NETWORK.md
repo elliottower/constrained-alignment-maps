@@ -302,3 +302,19 @@ fact.
 **Neither run is a condition for reporting the random-network result.** If both
 fail or are inconclusive, the section is written with $\rho \gg 1$ stated as an
 open observation.
+
+### Amendment 3 implementation note (2026-07-28, before launch)
+
+Run A requires seed control, which the IOI path did not have: seeds existed only
+for grokking model training. A `map_seed` argument now sets the torch seed before
+alignment-map initialisation and training. Pair generation retains its own fixed
+generator (`random.Random(42)`), so replicates differ in the map and not in the
+evaluation data, which is what makes them controlled replicates rather than
+different experiments. Output directories are tagged by seed.
+
+No hypothesis, threshold, or decision rule changes. Run A is three seeds at 2000
+steps on the random arm; Run B is the 5000-step random arm and its matched
+pretrained arm, both under the Amendment 2 script so grouped rho is recorded.
+
+**Script SHA-256 for Runs A and B:**
+`d0a904d1d5677c3d897538585aeea256190150cdd9c481d6b1db5969a3d2309e`

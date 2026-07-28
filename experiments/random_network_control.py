@@ -948,8 +948,13 @@ def randomize_weights_(model):
     return model
 
 
-def run_ioi_task(device, k=1, random_init=False, nldas_steps=200):
-    log_msg(f"=== IOI (GPT-2) | random_init={random_init} ===")
+def run_ioi_task(device, k=1, random_init=False, nldas_steps=200, map_seed=0):
+    log_msg(f"=== IOI (GPT-2) | random_init={random_init} | map_seed={map_seed} ===")
+    # Seeds alignment-map init/training only. Pair generation keeps its own
+    # fixed rng (random.Random(42)), so replicates differ in the map, not the data.
+    torch.manual_seed(map_seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(map_seed)
     model = HookedTransformer.from_pretrained("gpt2", device=device)
     if random_init:
         randomize_weights_(model)
@@ -1003,7 +1008,7 @@ def run_ioi_task(device, k=1, random_init=False, nldas_steps=200):
     timeout=86400,
     volumes={"/results": results_vol},
 )
-def main(tasks: list[str] = None, k: int = 1, random_init: bool = False, nldas_steps: int = 200):
+def main(tasks: list[str] = None, k: int = 1, random_init: bool = False, nldas_steps: int = 200, map_seed: int = 0):
     log = logging.getLogger(__name__)
     logging.basicConfig(level=logging.INFO)
 
@@ -1014,14 +1019,14 @@ def main(tasks: list[str] = None, k: int = 1, random_init: bool = False, nldas_s
         tasks = ["ioi"]
 
     all_results = {}
-    tag = ("random_init" if random_init else "pretrained") + f"_nldas{nldas_steps}"
+    tag = ("random_init" if random_init else "pretrained") + f"_nldas{nldas_steps}_seed{map_seed}"
     out_dir = f"/results/random_network_control/{tag}/k{k}"
     os.makedirs(out_dir, exist_ok=True)
 
     for task in tasks:
         t0 = time.time()
         if task == "ioi":
-            result = run_ioi_task(device, k=k, random_init=random_init, nldas_steps=nldas_steps)
+            result = run_ioi_task(device, k=k, random_init=random_init, nldas_steps=nldas_steps, map_seed=map_seed)
         elif task in GROK_EPOCHS:
             result = run_grokking_task(task, device, k=k)
         else:
@@ -1062,7 +1067,7 @@ def main(tasks: list[str] = None, k: int = 1, random_init: bool = False, nldas_s
 
 
 @app.local_entrypoint()
-def cli(tasks: str = "ioi", k: int = 1, random_init: bool = False, nldas_steps: int = 200):
+def cli(tasks: str = "ioi", k: int = 1, random_init: bool = False, nldas_steps: int = 200, map_seed: int = 0):
     task_list = [t.strip() for t in tasks.split(",")]
-    result = main.remote(tasks=task_list, k=k, random_init=random_init, nldas_steps=nldas_steps)
+    result = main.remote(tasks=task_list, k=k, random_init=random_init, nldas_steps=nldas_steps, map_seed=map_seed)
     print(json.dumps(result, indent=2, default=str))
