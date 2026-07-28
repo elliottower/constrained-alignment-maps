@@ -264,7 +264,31 @@ def generate_ioi_pairs(model, device, max_pairs=600, require_correct=True):
 # Diversity ratio
 # ===================================================================
 
+_ACT_DUMP_DIR = os.environ.get("ACT_DUMP_DIR", "/results/activation_dumps")
+_ACT_DUMP_N = [0]
+
+
+def _persist_acts(intervened_acts, natural_acts, labels):
+    """Save raw activations + labels so any future metric is a re-score, not a re-run."""
+    try:
+        os.makedirs(_ACT_DUMP_DIR, exist_ok=True)
+        _ACT_DUMP_N[0] += 1
+        torch.save({"intervened": intervened_acts.cpu(),
+                    "natural": natural_acts.cpu(),
+                    "labels": list(map(int, labels))},
+                   os.path.join(_ACT_DUMP_DIR, f"acts_{_ACT_DUMP_N[0]:03d}.pt"))
+    except Exception as e:
+        log_msg(f"  [warn] activation dump failed: {e}")
+
+
 def compute_diversity_ratio(intervened_acts, natural_acts):
+    """Global dispersion ratio: std over ALL examples, no label grouping.
+
+    Retained as the secondary metric. It is conservative for detecting a
+    lookup table, because a lookup table preserves across-label variation and
+    that variation inflates this numerator. See compute_diversity_grouped for
+    the within-label metric the paper's Eq. (diversity_ratio) defines.
+    """
     if len(intervened_acts) < 3:
         return float("nan")
     iv_std = intervened_acts.std(dim=0).mean().item()
@@ -272,6 +296,41 @@ def compute_diversity_ratio(intervened_acts, natural_acts):
     if nat_std < 1e-8:
         return float("nan")
     return iv_std / nat_std
+
+
+def compute_diversity_grouped(intervened_acts, natural_acts, labels, min_group=5):
+    """Within-label diversity ratio, matching Eq. (diversity_ratio).
+
+    rho = E_{y_s}[ std(h'_{y_s}) ] / E_{y_s}[ std(h_{y_s}) ]
+
+    A lookup table maps every base sharing a source label to one activation, so
+    its numerator collapses while the denominator does not. Numerator and
+    denominator are returned separately: on a model with no structure the
+    per-label denominator can itself become degenerate, which would inflate the
+    ratio for reasons unrelated to the intervention.
+    """
+    from collections import defaultdict
+    idx = defaultdict(list)
+    for i, y in enumerate(labels):
+        idx[int(y)].append(i)
+    iv_stds, nat_stds, used = [], [], 0
+    for _, ids in idx.items():
+        if len(ids) < min_group:
+            continue
+        used += 1
+        iv_stds.append(intervened_acts[ids].std(dim=0).mean().item())
+        nat_stds.append(natural_acts[ids].std(dim=0).mean().item())
+    dropped = len(idx) - used
+    if not iv_stds:
+        return {"rho_within": float("nan"), "iv_std_within": float("nan"),
+                "nat_std_within": float("nan"), "n_groups_kept": 0,
+                "n_groups_dropped": dropped, "min_group": min_group}
+    num = sum(iv_stds) / len(iv_stds)
+    den = sum(nat_stds) / len(nat_stds)
+    return {"rho_within": (num / den) if den > 1e-8 else float("nan"),
+            "iv_std_within": num, "nat_std_within": den,
+            "n_groups_kept": used, "n_groups_dropped": dropped,
+            "min_group": min_group}
 
 
 # ===================================================================
@@ -441,6 +500,9 @@ def run_nldas(train_data, eval_data, model, hook_name, device, k, n_steps=200,
     natural_acts = torch.stack([d["source_act"] for d in eval_data])
     intervened_acts = torch.stack(intervened_acts_list)
     div_ratio = compute_diversity_ratio(intervened_acts, natural_acts)
+    _labels = [d["src_id"] for d in eval_data]
+    grouped = compute_diversity_grouped(intervened_acts, natural_acts, _labels)
+    _persist_acts(intervened_acts, natural_acts, _labels)
 
     return {
         "method": "nldas",
@@ -449,6 +511,7 @@ def run_nldas(train_data, eval_data, model, hook_name, device, k, n_steps=200,
         "mean_prob_diff": sum(prob_diffs) / len(prob_diffs) if prob_diffs else None,
         "mean_logit_diff": sum(logit_diffs) / len(logit_diffs) if logit_diffs else None,
         "diversity_ratio": div_ratio,
+        **grouped,
     }
 
 
@@ -643,6 +706,9 @@ def eval_vae_iia(vae, model, eval_data, hook_name, device):
     natural_acts = torch.stack([d["source_act"] for d in eval_data])
     intervened_acts = torch.stack(intervened_acts_list)
     div_ratio = compute_diversity_ratio(intervened_acts, natural_acts)
+    _labels = [d["src_id"] for d in eval_data]
+    grouped = compute_diversity_grouped(intervened_acts, natural_acts, _labels)
+    _persist_acts(intervened_acts, natural_acts, _labels)
 
     return {
         "iia": correct / total if total else 0.0,
@@ -650,6 +716,7 @@ def eval_vae_iia(vae, model, eval_data, hook_name, device):
         "mean_prob_diff": sum(prob_diffs) / len(prob_diffs) if prob_diffs else None,
         "mean_logit_diff": sum(logit_diffs) / len(logit_diffs) if logit_diffs else None,
         "diversity_ratio": div_ratio,
+        **grouped,
     }
 
 
@@ -695,6 +762,9 @@ def _eval_linear(model, eval_data, proj, hook_name, device, method_name):
     natural_acts = torch.stack([d["source_act"] for d in eval_data])
     intervened_acts = torch.stack(intervened_acts_list)
     div_ratio = compute_diversity_ratio(intervened_acts, natural_acts)
+    _labels = [d["src_id"] for d in eval_data]
+    grouped = compute_diversity_grouped(intervened_acts, natural_acts, _labels)
+    _persist_acts(intervened_acts, natural_acts, _labels)
 
     return {
         "method": method_name,
@@ -703,6 +773,7 @@ def _eval_linear(model, eval_data, proj, hook_name, device, method_name):
         "mean_prob_diff": sum(prob_diffs) / len(prob_diffs) if prob_diffs else None,
         "mean_logit_diff": sum(logit_diffs) / len(logit_diffs) if logit_diffs else None,
         "diversity_ratio": div_ratio,
+        **grouped,
     }
 
 

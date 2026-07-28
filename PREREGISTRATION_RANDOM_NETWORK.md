@@ -159,3 +159,73 @@ regardless of what the pretrained arm shows; IIA $\leq 0.30$ means H2 holds and
 there was no structure to recover. There is no outcome on which the two readings
 disagree, and we are not treating a single number as independent support for two
 arguments.
+
+## Amendment 2 — diversity ratio: grouped metric added (2026-07-28, before re-run)
+
+**Provenance.** This change was prompted by a code audit comparing every displayed
+equation in the manuscript against its implementing function, not by a result
+looking wrong. The audit was triggered by the definition mismatch itself. The
+$\rho = 8.05$ value on the random arm was already recorded before the audit and is
+not the reason for the change; recording this because a metric redefined after
+seeing an anomalous number would otherwise be indistinguishable from one redefined
+to obtain a better one.
+
+**The mismatch.** The manuscript defines
+$\rho = \mathbb{E}_{y_s}[\mathrm{std}(h'_{y_s})] / \mathbb{E}_{y_s}[\mathrm{std}(h_{y_s})]$,
+grouped by source label. `compute_diversity_ratio` computes a global standard
+deviation over all evaluation examples with no grouping. The stated interpretation
+("$\rho \approx 0$ indicates a lookup table, all intervened activations for the
+same $y_s$ collapse to a single point") is the within-label reading and does not
+follow from the global quantity.
+
+**Why the grouped version is primary.** A lookup table maps every base sharing a
+source label to one activation. It therefore has zero within-label spread and
+undiminished across-label spread. The global metric sums both, so its numerator is
+inflated by exactly the variation a lookup table preserves, making it prone to
+false negatives for the failure mode it is meant to detect.
+
+**Consequence for results already recorded.** Global $\rho$ remains valid as a
+conservative measure. NL-DAS reaching $\rho = 0.05$ on a metric biased toward
+missing collapse is stronger evidence than the grouped value would be, not weaker.
+Previously recorded global values are retained and reported as secondary.
+
+**Change.** `compute_diversity_grouped` is added, returning `rho_within` together
+with its numerator (`iv_std_within`), denominator (`nat_std_within`), and the
+number of label groups meeting the minimum size. Both metrics are reported for
+every method. The global function is unchanged. No training procedure, objective,
+architecture, or evaluation protocol is altered: this is an evaluation-time metric
+only.
+
+**Minimum group size, fixed now.** Within-label standard deviation is undefined
+for singleton groups and unstable for very small ones. Labels with fewer than
+five evaluation examples are excluded from both numerator and denominator, and
+each result reports `n_groups_kept` alongside `n_groups_dropped`. Tasks where
+most labels are dropped yield an uninformative `rho_within`: capitals has 182
+classes over 190 examples and is expected to fail this check outright, in which
+case the global metric governs for that task and we say so rather than reporting
+a ratio computed from a handful of groups.
+
+**Degenerate-denominator prediction, fixed now.** On the random arm the per-label
+denominator may itself be degenerate, since a network that cannot perform the
+task gives source labels little meaning. The comparison is **per method and per
+arm**: for each method, if `nat_std_within` on the random arm falls below one
+quarter of that same method's `nat_std_within` on the pretrained arm,
+`rho_within` is reported as uninformative for that method on that arm and the
+global metric governs there. Per-method is specified because pretrained $\rho$
+differs by more than an order of magnitude across methods (NL-DAS $0.05$ against
+the structured VAE $0.838$), so an aggregate threshold would mean different
+absolute values depending on which method it was read against.
+
+**Persistence, added now.** Raw intervened activations, natural activations, and
+source labels are written to disk for every method call. Any future metric
+question is then a re-score rather than a re-run. This has no effect on the
+experiment and is recorded here only so the change is on file.
+
+**Script SHA-256 after Amendment 2:**
+`f47b40924bf02a0b48a620c51b00636b82831fe518945eeaa30e750a31ef612e`
+
+The 200-step and 2000-step runs already recorded were executed under the previous
+SHAs (`887ff8f2...` and `3123689540df...` respectively) and are not re-attributed.
+The 5000-step run currently in flight was launched under `3123689540df...`; if its
+H1 verdict stands, it is reported with global $\rho$ only, and grouped $\rho$ comes
+from the re-run.
