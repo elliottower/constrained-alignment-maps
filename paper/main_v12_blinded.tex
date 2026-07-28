@@ -203,7 +203,6 @@ subspace. Given a base input $x_b$ and source input $x_s$, the interchange
 intervention replaces the in-subspace component:
 \begin{equation}
 h' = h_b - QQ^\top h_b + QQ^\top h_s .
-% implemented in experiments/random_network_control.py:run_das (proj @ (src - base), added to h_b)
 \label{eq:intervention}
 \end{equation}
 IIA measures the fraction of interventions for which the model's output matches
@@ -247,7 +246,6 @@ classification term:
 + \beta_n \underbrace{\KL\bigl(q(z_\text{nuisance} \mid x) \,\|\, \mathcal{N}(0, I)\bigr)}_{\text{nuisance}}
 + \alpha \underbrace{\mathcal{L}_\text{CE}(y, \hat{y})}_{\text{supervision}},
 \label{eq:vae_loss}
-% implemented in experiments/random_network_control.py:train_vae_family (kl_c, kl_n, ce, recon)
 \end{equation}
 where $p(z_\text{causal} \mid y) = \mathcal{N}(\mu_y, \sigma_y^2 I)$ has per-label mean and
 variance learned as embeddings. The two regularisation terms are kept separate
@@ -416,7 +414,6 @@ Given MLP encoder $f: \R^d \to \R^d$ and decoder $g: \R^d \to \R^d$, the
 nonlinear DAS (NL-DAS) intervention is:
 \begin{equation}
 h' = g\bigl(f(h_b) - QQ^\top f(h_b) + QQ^\top f(h_s)\bigr)
-% implemented in experiments/random_network_control.py:run_nldas (featurizer / proj / inv_featurizer)
 \label{eq:nldas}
 \end{equation}
 where $Q \in \R^{d \times k}$ is learned jointly with $f$ and $g$ by maximizing
@@ -457,8 +454,6 @@ base-specific nuisance information. We define the \emph{diversity ratio}:
 \rho = \frac{\mathbb{E}_{y_s}\bigl[\text{std}(h'_{y_s})\bigr]}
             {\mathbb{E}_{y_s}\bigl[\text{std}(h_{y_s})\bigr]}
 \label{eq:diversity_ratio}
-% implemented in experiments/random_network_control.py:compute_diversity_ratio
-% MISMATCH: code computes a global std ratio with no E_{y_s} grouping. See Amendment 2.
 \end{equation}
 where the numerator is over intervened activations sharing source label $y_s$
 and the denominator is over the corresponding natural source activations.
@@ -872,10 +867,10 @@ exceeding it where nonlinear structure is needed), not a special-case method.
 
 \paragraph{Capacity comparison.}
 The methods differ substantially in parameter count
-(Table~\ref{tab:params}). DAS learns only the rotation $Q$; Pi-SAE adds
+(Table~\ref{tab:params}). DAS learns only the rotation $Q$; Structured VAE adds
 an encoder-decoder with reconstruction constraints; NL-DAS adds an MLP
-featurizer without constraints. Pi-SAE E2E uses the same architecture
-as Pi-SAE but trains with intervention loss end-to-end. The Pi-SAE's
+featurizer without constraints. Structured VAE (E2E) uses the same architecture
+as Structured VAE but trains with intervention loss end-to-end. The Structured VAE's
 additional capacity is spent on reconstruction and regularization, not
 on memorizing intervention pairs---as the diversity ratio confirms.
 
@@ -888,12 +883,12 @@ Method & Parameters & Constraints \\
 \midrule
 DAS         & 768     & None (linear rotation) \\
 NL-DAS      & $\sim$787K  & None (end-to-end IIA only) \\
-Pi-SAE      & $\sim$414K  & ELBO + KL + causal/nuisance split \\
-Pi-SAE E2E  & $\sim$414K  & ELBO + KL + split + IIA \\
+Structured VAE      & $\sim$414K  & ELBO + KL + causal/nuisance split \\
+Structured VAE (E2E)  & $\sim$414K  & ELBO + KL + split + IIA \\
 \bottomrule
 \end{tabular}
 \caption{Parameter counts at $k{=}1$ on GPT-2 ($d = 768$, hidden $= 512$,
-  latent $= 16$). NL-DAS has $1.9\times$ the parameters of Pi-SAE with
+  latent $= 16$). NL-DAS has $1.9\times$ the parameters of Structured VAE with
   zero structural constraints, enabling the lookup-table failure mode.}
 \label{tab:params}
 \end{table}
@@ -1156,17 +1151,17 @@ Method & IIA & $\rho$ & IIA & $\rho$ & IIA & $\rho$ \\
 \midrule
 DAS           & 0.183 & ---  & 0.035 & ---  & 0.166 & ---  \\
 NL-DAS        & 1.000 & 0.05 & 1.000 & 0.05 & 0.537 & 0.05 \\
-Pi-SAE        & 1.000 & 0.83 & 0.001 & 0.78 & 0.963 & 0.51 \\
-Pi-SAE E2E    & 1.000 & 0.83 & 0.001 & 0.80 & \textbf{0.993} & 0.53 \\
+Structured VAE        & 1.000 & 0.83 & 0.001 & 0.78 & 0.963 & 0.51 \\
+Structured VAE (E2E)    & 1.000 & 0.83 & 0.001 & 0.80 & \textbf{0.993} & 0.53 \\
 \bottomrule
 \end{tabular}
 \caption{Cross-distribution generalization on IOI at $k{=}1$.
   NL-DAS maintains IIA~$= 1.0$ on disjoint names because its
   lookup table ignores input identity ($\rho = 0.05$).
-  Pi-SAE correctly reports IIA~$\approx 0$ on disjoint names---the
+  Structured VAE correctly reports IIA~$\approx 0$ on disjoint names---the
   causal variable is token-specific and does not transfer between
   entity sets.
-  On disjoint templates, Pi-SAE E2E achieves IIA~$= 0.993$ with
+  On disjoint templates, Structured VAE (E2E) achieves IIA~$= 0.993$ with
   $\rho = 0.53$, confirming genuine generalization across surface
   forms.}
 \label{tab:cross_dist}
@@ -1198,7 +1193,7 @@ splits (IOI, $k{=}1$). Vacuous methods (top-left, red shading) achieve
 high IIA with $\rho \approx 0$: the encoder-decoder collapses to a
 lookup table. Genuine methods (top-right, green shading) maintain high
 $\rho$, confirming input-specific interventions. NL-DAS occupies the
-vacuous region across all splits. Pi-SAE E2E on disjoint templates
+vacuous region across all splits. Structured VAE (E2E) on disjoint templates
 ($\IIA = 0.993$, $\rho = 0.53$) confirms genuine cross-distribution
 generalization. Edge color indicates split: black = standard, purple =
 disjoint names, teal = disjoint templates.}
@@ -1208,7 +1203,7 @@ disjoint names, teal = disjoint templates.}
 On disjoint templates, the situation reverses: the causal variable
 transfers across sentence structures because the underlying
 computation (attending to the indirect object position) is
-template-invariant. Pi-SAE E2E achieves IIA~$= 0.993$ with
+template-invariant. Structured VAE (E2E) achieves IIA~$= 0.993$ with
 $\rho = 0.53$, confirming that the learned subspace captures
 genuine causal structure. NL-DAS drops to IIA~$= 0.537$---its
 template-specific lookup table partially fails when sentence
