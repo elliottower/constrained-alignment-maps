@@ -994,10 +994,12 @@ preserving $z_\text{nuisance}$ genuinely modifies only the causal component.
 These results suggest that nonlinear methods for causal abstraction should be
 evaluated with intervention faithfulness metrics alongside IIA. The NL-DAS failure mode is not specific to
 our architecture---it is an instance of the non-linear representation dilemma
-proved by \citet{sutter2025nonlinear}: without structural constraints,
-unconstrained nonlinear alignment maps can match any network to any algorithm
-at perfect IIA. Our experiments confirm this theoretical result empirically,
-and the label-conditional structured VAE provides a constructive resolution: the ELBO's
+established by \citet{sutter2025nonlinear}, who prove that without structural
+constraints an unconstrained nonlinear alignment map can match any network to any
+algorithm at perfect IIA, and who demonstrate it directly by reaching 100\% IIA
+on randomly initialised language models. We reproduce their result in our setting
+rather than establishing it, and ask what a constrained map does under the same
+test: the ELBO's
 reconstruction and regularization terms exclude the degenerate solutions we
 observe. We do not establish that they restore identifiability.
 Prior work proposing neural network featurizers for causal abstraction
@@ -1045,17 +1047,91 @@ indistinguishable from a random subspace, which is the relevant statement: the
 label-conditional structured VAE's accuracy does not survive removing the label
 supervision, the reconstruction term, training, or the latent partition.
 
-\subsection{Randomly initialised model}
+\subsection{A constrained map under Sutter et al.'s random-network test}
 \label{sec:randomnet}
 
-\TODO{RUNNING. \citet{sutter2025nonlinear} report near-100\% IIA for
-unconstrained maps on randomly initialised models, which is the most direct test
-of whether constraints matter. Both arms launched: GPT-2 with pretrained weights
-and with every parameter re-initialised, IOI, otherwise identical. On the random
-arm the counterfactual target is set by the task rather than the model's own
-outputs, since a random model is correct on nothing. If the label-conditional
-structured VAE also scores high there, \S\ref{sec:nldas_vacuous} does not
-support the reading given and this paper needs rewriting around that.}
+The sharpest form of \citet{sutter2025nonlinear}'s result is empirical rather
+than theoretical: their alignment maps reach 100\% interchange accuracy on
+\emph{randomly initialised} language models, networks that cannot perform the
+task at all. High accuracy obtained that way carries no information about the
+network, which is what makes the test decisive. The test is theirs. They apply it
+to unconstrained maps; we apply it to a constrained one, which they do not
+examine.
+
+We run both arms under identical settings, varying only the base model's weights.
+On the random arm the counterfactual target is set by the task rather than by the
+model's own outputs, since a random model is correct on nothing.
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{l rr rr}
+\toprule
+& \multicolumn{2}{c}{Pretrained GPT-2} & \multicolumn{2}{c}{Randomly initialised} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Method & IIA & $\rho_\text{within}$ & IIA & $\rho_\text{within}$ \\
+\midrule
+DAS (linear)            & 0.194 & 1.391 & 0.000 & 0.892 \\
+NL-DAS                  & 1.000 & 0.079 & \textbf{0.989} & 1.068 \\
+NL-DAS + reconstruction & 0.944 & 2.249 & 0.806 & 1.532 \\
+Structured VAE          & 1.000 & 0.561 & \textbf{0.000} & 0.629 \\
+\bottomrule
+\end{tabular}
+\caption{Indirect object identification at $k = 1$, 5000 NL-DAS steps, on
+pretrained GPT-2 and on the same architecture with every parameter
+re-initialised. The random-network test is \citet{sutter2025nonlinear}'s; the
+constrained map is what we add to it. Replicated at 2000 steps across three
+seeds, where NL-DAS reaches $0.944$--$0.961$ on the random arm and the structured
+VAE reaches $0.000$ on all three.}
+\label{tab:randomnet}
+\end{table}
+
+Destroying the network costs the unconstrained map $0.011$
+(Table~\ref{tab:randomnet}). NL-DAS reaches $\IIA = 0.989$ on a network with no
+causal structure, reproducing \citeauthor{sutter2025nonlinear}'s finding in our
+setting. The constrained map reaches $0.000$. The separation held in all five
+runs we conducted, across three seeds and two optimisation budgets.
+
+This is also the answer to an objection the method invites. The structured VAE
+supervises its causal latent with the task label, so a reader may reasonably ask
+whether interchange succeeds by routing the answer through that latent rather
+than through the model's computation, which would be the same lookup-table
+failure we attribute to NL-DAS. A random network contains no causal structure, so
+any accuracy above chance there is leakage. The method scores zero. The decision
+rule was fixed before the run: had it exceeded $0.30$, the claim would have been
+withdrawn.
+
+\subsection{Diversity ratio does not detect this vacuity at convergence}
+\label{sec:rho_fails}
+
+The diversity ratio is ours, and it does not survive this test.
+
+Read the $\rho_\text{within}$ column of Table~\ref{tab:randomnet} against the
+interpretation we gave it in \S\ref{sec:faithfulness_metrics}. NL-DAS scores $0.079$ on
+pretrained GPT-2, which that interpretation calls a collapsed lookup table, and
+$1.068$ on the random network, which it calls faithful. The metric clears the
+case with no causal structure and flags the case where structure exists. It
+inverts.
+
+Optimisation budget explains the inversion. NL-DAS random-arm accuracy rises with
+steps ($0.906$ at 2000, $0.989$ at 5000), and its $\rho_\text{within}$ falls
+toward 1 over the same range ($1.7$--$2.2$ across seeds at 2000, $1.068$ at
+5000). Under-optimised, the map forces the output through visible distortion.
+Given more steps it finds a solution that is both near-perfect and metrically
+indistinguishable from a faithful intervention. A vacuous map can look faithful
+once it has been trained long enough.
+
+We therefore report $\rho$ as a secondary signal and not as a sufficient test.
+This is the reason \citeauthor{sutter2025nonlinear}'s control is load-bearing
+rather than a redundant check: if an auxiliary faithfulness metric were
+sufficient, one could measure $\rho$ on the pretrained arm and stop. Ours is not
+sufficient, so the random-network test carries the claim.
+
+One observation remains unexplained. NL-DAS with a reconstruction penalty reaches
+$\rho_\text{within} = 2.249$ on the \emph{pretrained} arm at $\IIA = 0.944$, so
+high dispersion accompanies high accuracy on real structure as well. We have no
+account of it.
 
 \subsection{Cross-distribution generalization}
 \label{sec:cross_distribution}
@@ -1571,10 +1647,14 @@ work tests this hypothesis causally rather than correlationally.
 
 \paragraph{Nonlinear causal abstraction.}
 \citet{sutter2025nonlinear} prove that unconstrained nonlinear alignment maps
-render causal abstraction vacuous---any network can be aligned to any algorithm
-at perfect IIA. Concurrent work on nonlinear interchange interventions
-\citep{geiger2024causal} uses neural network featurizers before applying DAS.
-Our results empirically confirm the failure mode Sutter et al.\ predict
+render causal abstraction vacuous, since any network can be aligned to any
+algorithm at perfect IIA, and they establish it empirically as well as
+theoretically: their alignment maps reach 100\% IIA on randomly initialised
+language models. The diagnostic we use throughout, measuring interchange accuracy
+on a network with no causal structure, is theirs. Concurrent work on nonlinear
+interchange interventions \citep{geiger2024causal} uses neural network
+featurizers before applying DAS. Our contribution is to apply their test to a
+constrained map, which they do not examine
 (\S\ref{sec:nldas_vacuous}): unconstrained featurizers achieve perfect IIA
 by learning degenerate encoder-decoders. The label-conditional structured VAE provides a
 constructive resolution: the ELBO supplies the reconstruction and
