@@ -318,3 +318,36 @@ pretrained arm, both under the Amendment 2 script so grouped rho is recorded.
 
 **Script SHA-256 for Runs A and B:**
 `d0a904d1d5677c3d897538585aeea256190150cdd9c481d6b1db5969a3d2309e`
+
+## Analysis notes for Runs A and B (2026-07-28, seed 2 still pending)
+
+**The earlier 8.050 is outside the spread statistic, by the amendment's own
+wording.** Amendment 3 specifies "three seeds at 2000 steps" and applies the 2.0
+threshold to "the three seeds". The run that produced $\rho = 8.050$ is not one
+of them: it had no seed control and ran under a prior script SHA
+(`3123689540df...`), so it differs from the replicates in code version as well as
+seed. A seed-spread statistic requires variation in seed alone. That run is
+reported alongside the replicates as an earlier single measurement under a prior
+version, and is excluded from the spread estimate.
+
+Recording the direction this cuts: excluding it makes the spread narrower and the
+result more favourable. The exclusion follows the frozen wording rather than a
+judgment made after seeing the values, which is why it is stated here rather than
+argued for later.
+
+**Denominator check, resolved.** The Amendment 2 prediction was that the
+per-label denominator might be degenerate on the random arm. It is not:
+`nat_std_within` is $1.304$ (seed 0) and $1.210$ (seed 1), comparable across
+methods within a seed, with 18 label groups kept and none dropped. The threshold
+for declaring `rho_within` uninformative is not met. The numerators carry the
+whole effect ($2.458$ against $0.833$ at seed 0).
+
+**A limitation of the structured VAE's $\rho$ on the random arm.** Its
+$\rho_\text{within}$ of $0.638$--$0.647$ is measured over interventions that
+produce $\IIA = 0.000$, meaning interventions that did not change the output.
+This supports H3, which asked only whether the decoder had collapsed, and it is
+not evidence about the faithfulness of successful interventions, because none
+succeeded. The writeup must say so; a diversity ratio computed over ineffective
+interventions is a weaker quantity than one computed over effective ones, and a
+reviewer noticing $\rho \approx 0.65$ beside an accuracy of zero would be right
+to raise it.
