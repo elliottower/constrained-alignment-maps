@@ -1,0 +1,484 @@
+\pdfoutput=1
+
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{multirow}
+\usepackage{float}
+\usepackage{lineno}
+\usepackage[numbers,sort&compress]{natbib}
+\graphicspath{{figures/}}
+
+\newcommand{\IIA}{\mathrm{IIA}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\KL}{D_\mathrm{KL}}
+\newcommand{\zc}{z_{\text{causal}}}
+\newcommand{\zn}{z_{\text{nuisance}}}
+\newcommand{\TODO}[1]{\textcolor{red}{[#1]}}
+
+\renewcommand{\arraystretch}{1.2}
+
+\title{Interchange Accuracy Does Not Separate Constrained From Unconstrained
+Alignment Maps; Intervention Diversity and Distribution Shift Do}
+
+\author{Anonymous}
+\date{}
+
+\begin{document}
+\linenumbers
+\maketitle
+
+\begin{abstract}
+\citet{sutter2025nonlinear} showed that unconstrained nonlinear alignment maps
+make causal abstraction uninformative, reaching 100\% interchange intervention
+accuracy (IIA) on randomly initialised language models. We compare two nonlinear
+alignment maps trained on the same interchange objective, differing in whether
+that objective is optimised subject to a variational autoencoder's reconstruction
+and regularisation terms. On indirect object identification in GPT-2 at $k = 1$
+both reach $\IIA = 1.000$, so accuracy does not distinguish them. Two other
+measurements do. An intervention diversity ratio, comparing the spread of
+intervened activations against natural ones, is $0.05$ for the unconstrained map
+and $0.83$ for the constrained map. Under distribution shift the two diverge
+further: on held-out entities the unconstrained map reports $\IIA = 1.000$ and
+the constrained map $0.001$, while on held-out templates the constrained map
+reports $0.993$ against $0.537$. On grokked modular addition across subspace
+dimensions 1 to 32, the unconstrained map does not exceed $\IIA = 0.861$, linear
+DAS reaches $1.000$ at $k = 8$, and the constrained map reaches $1.000$ at
+$k = 1$. We do not establish that either map recovers the model's causal
+variable, and the reading of the held-out-entity result rests on an assumption
+about the task that we state rather than test. The supported claim is narrower:
+accuracy alone did not separate these two maps, and two inexpensive additional
+measurements did.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+Causal abstraction formalises what it means for a network to implement an
+algorithm: a model variable is causal if interventions on its internal
+representation behave like interventions on a high-level algorithmic variable
+\citep{geiger2021causal}. Distributed Alignment Search (DAS) operationalises this
+by learning a rotation that identifies a $k$-dimensional subspace of the residual
+stream, swapping the in-subspace component between two inputs, and measuring
+whether the model produces the counterfactual output \citep{geiger2023finding}.
+The fraction of successful swaps is the interchange intervention accuracy.
+
+DAS constrains the alignment map to be linear. \citet{sutter2025nonlinear} showed
+that removing this constraint makes the framework uninformative: sufficiently
+expressive maps can align any network to any algorithm, and in their experiments
+randomly initialised language models reached 100\% IIA on indirect object
+identification. High accuracy obtained this way says nothing about the network.
+
+One mechanism for this is visible in the training setup. A map trained on
+interchange loss alone has no term requiring its encoder and decoder to be
+approximate inverses. An optimiser could encode the label in one coordinate and
+have the decoder emit a fixed activation per label, discarding the base input,
+satisfying the interchange criterion without using the model's computation. We
+refer to this as a lookup-table solution. We do not prove that unconstrained maps
+converge to it; the measurements below are consistent with it rather than
+demonstrations of it.
+
+This paper compares two nonlinear alignment maps that optimise the same
+interchange objective and differ in what constrains it. The unconstrained map is
+a multilayer perceptron featuriser trained on interchange loss alone. The
+constrained map adds the interchange term to a variational autoencoder's
+reconstruction, regularisation, and supervision terms, so both maximise
+interchange accuracy on identical data. Holding the objective fixed isolates the
+constraints as a group, though not any single constraint; \S\ref{sec:ablation}
+addresses that separately.
+
+Because accuracy cannot by itself distinguish a lookup table from other
+solutions, we report two further measurements alongside it: a diversity ratio
+testing whether the decoder's output varies with the base input, and behaviour on
+two distribution shifts, one of which we expect to preserve the causal variable
+and one of which we do not.
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Accuracy and diversity}
+\label{sec:vacuity}
+
+If a decoder returns the same activation regardless of the base input, then
+intervening on different bases with a shared source produces identical outputs.
+The intervention diversity ratio $\rho$ (Methods) compares the spread of
+intervened activations against the spread of natural ones. Values near zero
+indicate that intervened activations for a given source label have collapsed
+together; values near one indicate they retain the variation seen in natural
+activations. We use $\rho$ as a proxy for whether the base input is being used,
+and note that it is a summary statistic we introduce rather than a validated
+measure of faithfulness.
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lc rrrr rr}
+\toprule
+Task & $k$ & DAS & NL-DAS & NL-DAS+r & Structured VAE & $\rho_\text{NL}$ & $\rho_\text{VAE}$ \\
+\midrule
+IOI & 1 & 0.183 & 1.000 & 0.867 & 1.000 & 0.05 & 0.83 \\
+IOI & 2 & 0.322 & 1.000 & 0.700 & 0.989 & 0.05 & 0.89 \\
+IOI & 4 & 0.572 & 1.000 & 0.811 & 0.989 & 0.05 & 0.92 \\
+\midrule
+Addition & 1 & 0.006 & 0.083 & 0.028 & 1.000 & 0.12 & 1.00 \\
+Addition & 2 & 0.022 & 0.422 & 0.039 & 1.000 & 0.29 & 1.00 \\
+Addition & 4 & 0.283 & 0.689 & 0.033 & 1.000 & 0.43 & 1.00 \\
+\midrule
+Mult.\ & 1 & 0.028 & 0.239 & 0.028 & 1.000 & 0.65 & 1.00 \\
+Mult.\ & 2 & 0.072 & 0.544 & 0.111 & 1.000 & 1.00 & 1.00 \\
+Mult.\ & 4 & 0.283 & 0.933 & 0.372 & 1.000 & 1.12 & 0.99 \\
+\bottomrule
+\end{tabular}
+\caption{Interchange accuracy and diversity ratio. On indirect object
+identification both nonlinear maps reach $\IIA = 1.000$ at every $k$, with
+$\rho = 0.05$ for the unconstrained map and $0.83$--$0.92$ for the constrained
+one. NL-DAS+r adds a reconstruction penalty ($\lambda_\text{recon} = 0.1$) and
+reaches lower accuracy than NL-DAS on the same task. Single runs per cell.}
+\label{tab:vacuity}
+\end{table}
+
+On indirect object identification the two nonlinear maps are indistinguishable by
+accuracy and differ by more than an order of magnitude in $\rho$
+(Table~\ref{tab:vacuity}). Adding a reconstruction penalty to the unconstrained
+map lowers its accuracy by $0.13$ to $0.30$ on this task, which is consistent
+with part of its accuracy depending on the absence of that penalty.
+
+On modular arithmetic the pattern differs. Linear DAS also scores low at small
+$k$ ($0.006$ at $k = 1$), so accuracy alone would favour the unconstrained
+nonlinear map, which reaches $0.689$ at $k = 4$. Its $\rho$ over the same range is
+$0.12$ to $0.43$. The constrained map reaches $1.000$ at $k = 1$ with
+$\rho = 1.00$.
+
+\subsection{Subspace dimension}
+\label{sec:ksweep}
+
+The unconstrained map's arithmetic accuracy could reflect an aligned space that
+is too small, in which case accuracy should rise with $k$.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{l rrrrrr}
+\toprule
+& $k{=}1$ & $k{=}2$ & $k{=}4$ & $k{=}8$ & $k{=}16$ & $k{=}32$ \\
+\midrule
+DAS (linear)          & 0.006 & 0.022 & 0.283 & 1.000 & 1.000 & 1.000 \\
+NL-DAS                & 0.083 & 0.422 & 0.689 & 0.770 & 0.861 & 0.806 \\
+\quad $\rho_\text{NL}$ & 0.12 & 0.29 & 0.43 & 0.46 & 0.54 & 0.33 \\
+Structured VAE        & 1.000 & 1.000 & 1.000 & 1.000 & 1.000 & 1.000 \\
+\quad $\rho_\text{VAE}$ & 1.00 & 1.00 & 1.00 & 1.00 & 0.99 & 1.00 \\
+\bottomrule
+\end{tabular}
+\caption{Grokked modular addition (test accuracy $0.9996$), subspace dimension 1
+to 32. Single runs per cell.}
+\label{tab:ksweep}
+\end{table}
+
+Across a $32\times$ range the unconstrained map does not exceed $0.861$
+(Table~\ref{tab:ksweep}), and both its accuracy and its diversity ratio decline
+from $k = 16$ to $k = 32$. Linear DAS reaches $1.000$ at $k = 8$. Eight
+dimensions is also the size of the span of four Fourier frequencies in two
+components each, the representation modular arithmetic models of this kind are
+reported to learn \citep{nanda2023progress}; we note the correspondence without
+testing it. These are single runs, so the decline at $k = 32$ in particular
+should not be read as an established effect.
+
+\subsection{Language model tasks}
+\label{sec:gpt2}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+& \multicolumn{2}{c}{DAS} & \multicolumn{2}{c}{Structured VAE} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Task & Standard & Strict & Standard & Strict \\
+\midrule
+Indirect object identification & 0.19 & 0.19 & 1.00 & 1.00 \\
+Gender bias                    & 0.62 & 0.52 & 1.00 & 1.00 \\
+Greater-than                   & 0.93 & 0.28 & 1.00 & 1.00 \\
+Subject--verb agreement        & 0.92 & 0.00 & 1.00 & 1.00 \\
+Hypernymy                      & 0.07 & 0.02 & 0.97 & 0.90 \\
+Capitals$^\dagger$             & 0.12 & 0.00 & 0.51 & 0.26 \\
+\bottomrule
+\end{tabular}
+\caption{Six GPT-2 tasks at $k = 1$, layer 8, additive intervention. Standard
+accuracy counts a success when the counterfactual answer outranks the base
+answer; strict accuracy requires it to be the argmax over the vocabulary.
+$^\dagger$Capitals has 182 classes over 190 examples.}
+\label{tab:nlp}
+\end{table}
+
+The two scoring rules disagree substantially for linear DAS
+(Table~\ref{tab:nlp}). On subject--verb agreement it scores $0.92$ standard and
+$0.00$ strict, and on greater-than $0.93$ against $0.28$. Reporting only the
+standard figure would overstate how often the counterfactual token is produced.
+The structured VAE reaches strict accuracy at or above $0.90$ on five of six
+tasks, and $0.26$ on capitals, where the number of classes approaches the number
+of examples.
+
+This table compares a linear map against a nonlinear one with more parameters, so
+it does not isolate the effect of the constraints. We report it to indicate the
+range of tasks on which the constrained map operates.
+
+\subsection{Distribution shift}
+\label{sec:shift}
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{l rr rr rr}
+\toprule
+& \multicolumn{2}{c}{Standard} & \multicolumn{2}{c}{Held-out entities} & \multicolumn{2}{c}{Held-out templates} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+Method & IIA & $\rho$ & IIA & $\rho$ & IIA & $\rho$ \\
+\midrule
+DAS                       & 0.183 & ---  & 0.035 & ---  & 0.166 & ---  \\
+NL-DAS                    & 1.000 & 0.05 & 1.000 & 0.05 & 0.537 & 0.05 \\
+Structured VAE            & 1.000 & 0.83 & 0.001 & 0.78 & 0.963 & 0.51 \\
+\quad + interchange loss  & 1.000 & 0.83 & 0.001 & 0.80 & 0.993 & 0.53 \\
+\bottomrule
+\end{tabular}
+\caption{Indirect object identification at $k = 1$ under two distribution
+shifts. Held-out entities withholds all test entities from training; held-out
+templates withholds all test sentence structures.}
+\label{tab:shift}
+\end{table}
+
+The two shifts separate the maps in opposite directions
+(Table~\ref{tab:shift}). On held-out entities the unconstrained map retains
+$\IIA = 1.000$ while the constrained map drops to $0.001$. On held-out templates
+the constrained map reaches $0.993$ and the unconstrained map falls to $0.537$.
+The unconstrained map's $\rho$ is $0.05$ on all three splits.
+
+Reading which outcome is preferable requires an assumption about the task. The
+indirect object identification variable is plausibly token-specific, in which
+case transplanting it between disjoint entity sets has no well-defined target and
+low accuracy is the appropriate result. Sentence structure is plausibly
+irrelevant to it, in which case transfer across templates should succeed. Under
+that reading the constrained map behaves as expected on both splits and the
+unconstrained map on neither. We state the assumption rather than test it; a
+reader who rejects it should take Table~\ref{tab:shift} as showing only that the
+two maps respond differently to the two shifts.
+
+\subsection{Which constraints matter}
+\label{sec:ablation}
+
+The structured VAE combines a label-conditional prior over the causal latent
+\citep{khemakhem2020variational} with a supervised/unsupervised latent partition
+\citep{narayanaswamy2017learning}, and expands the causal latent eightfold under
+an $L_1$ penalty.
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lccc rrrr}
+\toprule
+Model & Prior & Partition & Expansion & Add. & Mult. & Quartic & IOI \\
+\midrule
+Plain VAE            & $\mathcal{N}(0,I)$ & \checkmark & --- & \TODO{--} & \TODO{--} & \TODO{--} & 0.68 \\
+Label-conditional    & $p(z \mid y)$ & --- & --- & 0.02 & 0.00 & 0.02 & 0.56 \\
+\quad + expansion    & $p(z \mid y)$ & --- & \checkmark & 1.00 & 0.72 & 0.32 & 0.83 \\
+\quad + partition    & $p(z \mid y)$ & \checkmark & --- & 0.00 & 0.00 & 0.00 & 0.95 \\
+\quad + both         & $p(z \mid y)$ & \checkmark & \checkmark & 1.00 & 1.00 & 1.00 & 0.98 \\
+\bottomrule
+\end{tabular}
+\caption{Interchange accuracy at $k = 2$ by constraint combination. Single runs
+per cell.}
+\label{tab:ablation}
+\end{table}
+
+No single constraint reaches the accuracy of the full combination
+(Table~\ref{tab:ablation}). The label-conditional prior alone reaches $0.02$ on
+modular addition, and adding the partition to it reaches $0.00$. The expansion
+alone reaches $1.00$ on addition, $0.72$ on multiplication, and $0.32$ on quartic
+sum. The two together reach $1.00$ on all three. These are single runs, and we
+have not tested whether the differences exceed run-to-run variation.
+
+\TODO{SPARSITY CONFOUND, ABLATION RUNNING. Expansion and $L_1$ move together in
+this table, because the non-expanded builders take no expansion factor. With
+$\lambda = 10^{-3}$ the penalty is weak, so the expansion may account for the
+whole effect. \texttt{experiments/sparsity\_vs\_overcompleteness\_ablation.py}
+varies expansion $\in \{1,8\}$ against $\lambda \in \{0, 10^{-3}, 1\}$. Report
+whichever result it returns, and remove the $L_1$ from the method description if
+it proves inert.}
+
+\subsection{Randomly initialised model}
+\label{sec:randomnet}
+
+\TODO{RUNNING. Both arms launched: GPT-2 with pretrained weights and with every
+parameter re-initialised, indirect object identification, otherwise identical
+settings. On the random arm the counterfactual target is defined by the task
+rather than by the model's own outputs, since a random model is correct on
+nothing. Report IIA and $\rho$ for NL-DAS and the structured VAE on both arms. If
+the structured VAE also reaches high accuracy on the random arm, the reading
+given in \S\ref{sec:vacuity} is not supported and the paper needs rewriting
+around that.}
+
+\section{Discussion}
+\label{sec:discussion}
+
+\citet{sutter2025nonlinear} established that unrestricted nonlinear causal
+abstraction is uninformative and demonstrated it on randomly initialised models.
+Our measurements are consistent with the restriction mattering: two maps
+optimising the same interchange objective, differing in the presence of
+reconstruction and regularisation terms, reach the same accuracy and differ in
+diversity ratio and in behaviour under distribution shift. We have not shown that
+the constrained map recovers the model's causal variable, and $\rho$ is a
+statistic we introduce rather than an established measure. The strongest
+supported claim is that accuracy alone did not separate these two maps while two
+other measurements did.
+
+The constraints involved are standard components of generative models
+\citep{khemakhem2020variational, narayanaswamy2017learning}, and unsupervised
+disentanglement is known to be unidentifiable without inductive biases of this
+kind \citep{locatello2019challenging}. Nothing in the setup is specific to
+interpretability, so the comparison could be repeated with other constrained
+families.
+
+For practitioners the implication is procedural. Interchange accuracy is
+necessary for a causal variable claim and, on the evidence here, insufficient to
+distinguish two maps that differ substantially by other measures. Reporting a
+diversity ratio, performance on a randomly initialised model of the same
+architecture, and behaviour on a split where transfer is not expected costs
+little, and each of these separated the two maps in this study.
+
+\paragraph{Limitations.}
+Most cells in Tables~\ref{tab:ksweep} and~\ref{tab:ablation} are single runs, so
+differences smaller than run-to-run variation cannot be distinguished, and we
+have not measured that variation. The randomly initialised control in
+\S\ref{sec:randomnet} is the experiment most directly comparable to
+\citet{sutter2025nonlinear} and is not yet complete. The reading of the
+held-out-entity result depends on an assumption about the task that we state and
+do not test. The diversity ratio is a proxy: a map could preserve activation
+spread without tracking the causal variable, and we do not rule this out.
+Comparisons between linear DAS and the structured VAE are not capacity-controlled;
+the constrained-against-unconstrained comparison is closer to matched, with the
+constrained map using fewer parameters. Arithmetic experiments use synthetic
+modular arithmetic with small transformers ($d_\text{model} = 128$). Reported
+values come from separate runs rather than one sweep, which is why DAS on
+indirect object identification appears at both $0.183$ and $0.19$.
+
+These results describe two alignment maps on a small number of tasks. Whether the
+separation holds for other constrained families, other tasks, or other models is
+open.
+
+\section{Methods}
+\label{sec:methods}
+
+\subsection{Interchange interventions}
+
+Given a base input $b$ and a source input $s$, an interchange intervention
+replaces part of the model's representation of $b$ with the corresponding part
+from $s$ and asks whether the output matches the algorithm's counterfactual.
+Writing $f$ for an encoder and $g$ for a decoder, the intervened activation is
+$h' = g(\mathrm{swap}_k(f(h_b), f(h_s)))$, where $\mathrm{swap}_k$ replaces the
+first $k$ coordinates. Interchange accuracy is the fraction of pairs whose
+forward pass from $h'$ yields the counterfactual output. Standard accuracy counts
+a success when the counterfactual answer outranks the base answer; strict
+accuracy requires it to be the argmax over the vocabulary. DAS restricts $f$ to
+an orthogonal rotation with $g = f^{-1}$.
+
+\subsection{Alignment methods}
+
+NL-DAS prepends a multilayer perceptron featuriser to a linear projection and
+appends a multilayer perceptron inverse, trained end to end on interchange loss
+with no reconstruction term. NL-DAS+r adds a reconstruction penalty
+$\lambda_\text{recon}\lVert g(f(h)) - h \rVert^2$ with
+$\lambda_\text{recon} = 0.1$.
+
+\subsection{Structured variational autoencoder}
+
+The encoder maps activations to two latent blocks: $\zc$, supervised through a
+linear classifier and given a label-conditional Gaussian prior
+$\mathcal{N}(\mu_y, \sigma_y^2 I)$ with per-label parameters learned as
+embeddings \citep{khemakhem2020variational}; and $\zn$, unsupervised with a
+standard normal prior \citep{narayanaswamy2017learning}. Training minimises
+\begin{equation}
+\mathcal{L} = \underbrace{\lVert g(f(h)) - h \rVert^2}_{\text{reconstruction}}
++ \underbrace{\KL_\text{causal} + \KL_\text{nuisance}}_{\text{regularisation}}
++ \alpha \underbrace{\mathcal{L}_\text{CE}(y, \hat{y})}_{\text{supervision}}
++ \lambda \underbrace{\lVert \zc \rVert_1}_{\text{sparsity}}.
+\label{eq:loss}
+\end{equation}
+The causal block is expanded eightfold. All runs use $\zn$ dimension 16,
+expansion factor 8, $\alpha = 10.0$, $\lambda = 10^{-3}$, learning rate
+$10^{-3}$, and Adam. Encoder and decoder hidden width is 256 for GPT-2 tasks and
+128 for modular arithmetic.
+
+The label-conditional prior follows the identifiable VAE construction
+\citep{khemakhem2020variational}. That construction's identifiability result
+requires conditions we do not verify, including sufficient variability of the
+per-label parameters relative to latent dimension, which is unlikely to hold on
+our two-class tasks. We use the architecture as a source of constraints and make
+no identifiability claim.
+
+\subsection{Constrained interchange training}
+
+After a reconstruction-and-classification warmup, an interchange term is added to
+Equation~\ref{eq:loss} rather than substituted for it. Swapping $\zc$ and
+decoding gives an intervened activation, which runs through the remaining layers
+to contribute $-\log p(y_s \mid h')$. The generative terms stay active, so this
+method optimises the same objective as NL-DAS with additional constraints.
+
+The intervention is applied additively as
+$h' = h_b + g(z_\text{swap}) - g(z_\text{orig})$, injecting the difference the
+swap induces rather than the reconstructed activation, so that residual
+reconstruction error cancels.
+
+\subsection{Intervention diversity}
+
+For each source label we compare the spread of intervened activations against the
+spread of natural ones:
+\begin{equation}
+\rho = \frac{\mathbb{E}_{y_s}\bigl[\mathrm{std}(h'_{y_s})\bigr]}
+            {\mathbb{E}_{y_s}\bigl[\mathrm{std}(h_{y_s})\bigr]},
+\label{eq:rho}
+\end{equation}
+where the numerator ranges over intervened activations sharing source label $y_s$
+and the denominator over the corresponding natural activations. Linear DAS
+preserves the orthogonal complement by construction, so $\rho$ is reported only
+for nonlinear maps.
+
+\subsection{Tasks and controls}
+
+Grokking experiments train one-layer transformers ($d_\text{model} = 128$) on
+modular arithmetic at $p = 113$ to test accuracy above $0.999$. Language tasks use
+GPT-2 at layer 8. Held-out entity and held-out template splits withhold,
+respectively, all test entities and all test sentence structures from training.
+
+Controls comprise random-label supervision, reconstruction-only training
+($\alpha = 0$), an untrained probe, and a plain VAE without the latent partition.
+Each is reported against the accuracy of a random subspace on the same task
+rather than against zero, because chance accuracy varies with the number of
+classes: on gender bias, with two classes, a random subspace and three of the
+four controls all score $0.267$.
+
+\TODO{CONTROL PROVENANCE. An earlier draft reported these controls as ``all below
+$0.09$'', which is the figure from many-class tasks read as a universal bound.
+Recompute per task against the random-subspace baseline already present in the
+result files, and report $\rho$ for each.}
+
+\section*{Data Availability}
+
+\TODO{Repository and archived snapshot.}
+
+\section*{Code Availability}
+
+\TODO{Repository.}
+
+\bibliographystyle{plainnat}
+\bibliography{references,new_bib_entries}
+
+\end{document}
