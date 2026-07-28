@@ -351,3 +351,63 @@ succeeded. The writeup must say so; a diversity ratio computed over ineffective
 interventions is a weaker quantity than one computed over effective ones, and a
 reviewer noticing $\rho \approx 0.65$ beside an accuracy of zero would be right
 to raise it.
+
+## Outcome, Runs A and B (recorded 2026-07-28, after unblinding)
+
+### Run A — is $\rho = 8.05$ reproducible?
+
+Random arm, 2000 steps, three seeds under SHA `d0a904d1...`.
+
+| seed | NL-DAS IIA | $\rho_\text{global}$ | $\rho_\text{within}$ | VAE IIA | VAE $\rho_\text{within}$ |
+|---|---|---|---|---|---|
+| 0 | 0.950 | 5.162 | 1.884 | 0.000 | 0.638 |
+| 1 | 0.961 | 4.546 | 1.692 | 0.000 | 0.647 |
+| 2 | 0.944 | 6.151 | 2.220 | 0.000 | 0.533 |
+
+Spread in $\rho_\text{global}$ is **1.604**, inside the 2.0 threshold fixed in
+advance. $\rho \gg 1$ at 2000 steps is reproducible across seeds. The earlier
+$8.050$ is outside this range and is excluded from the statistic for the reason
+recorded above: it was not seed-controlled and ran under a prior SHA.
+
+H1 also replicates independently: NL-DAS clears $0.90$ on all three seeds
+($0.944$--$0.961$), and the structured VAE is $0.000$ on every one.
+
+### Run B — grouped $\rho$, 5000 steps, both arms
+
+| method | IIA pre | $\rho_w$ pre | IIA rand | $\rho_w$ rand |
+|---|---|---|---|---|
+| DAS | 0.194 | 1.391 | 0.000 | 0.892 |
+| NL-DAS | 1.000 | **0.079** | 0.989 | **1.068** |
+| NL-DAS+recon | 0.944 | 2.249 | 0.806 | 1.532 |
+| structured VAE | 1.000 | 0.561 | 0.000 | 0.629 |
+
+### The finding, which is not the one anticipated
+
+$\rho$ does not detect this vacuity at convergence. NL-DAS on the random arm
+reaches $\IIA = 0.989$ with $\rho_\text{within} = 1.068$, a value the
+manuscript's stated interpretation reads as faithful, on a network containing no
+causal structure. On the pretrained arm the same method reads as collapsed
+($0.079$). The metric therefore inverts between arms: it flags the case where
+real structure exists and clears the case where none does.
+
+NL-DAS random-arm accuracy also rises with optimisation ($0.906 \to 0.950 \to
+0.989$ at 2000, 5000 across the sweep). The reading is that given enough steps,
+an unconstrained map no longer needs a metrically visible distortion to achieve
+near-perfect vacuous accuracy. Under-optimised, it forces the answer through
+collapse or over-dispersion; at convergence it finds a solution that is both
+$\IIA \approx 1$ and metrically indistinguishable from a faithful one.
+
+**Consequence for the paper.** $\rho$ is demoted from a co-equal faithfulness
+metric to a secondary, non-decisive signal. Interchange accuracy on a randomly
+initialised model is the diagnostic that separated the methods in all five runs
+and is the one that generalises across optimisation regimes. That $\rho$ fails at
+convergence is the argument for why the random-network control is load-bearing
+rather than redundant: were $\rho$ sufficient, the control would not be needed.
+
+**Unexplained and flagged.** NL-DAS+recon reaches $\rho_w = 2.249$ on the
+*pretrained* arm at $\IIA = 0.944$, so high dispersion with high accuracy occurs
+on real structure too. We have no account of this and record it as open.
+
+**The central result is unaffected and now replicated five times.** Structured
+VAE $1.000 \to 0.000$ between arms; NL-DAS $1.000 \to 0.989$. Destroying the
+network costs the unconstrained map $0.011$.

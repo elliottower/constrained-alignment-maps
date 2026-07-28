@@ -1,0 +1,70 @@
+{
+  "methods": {
+    "random": {
+      "method": "random",
+      "iia": 0.0,
+      "n_eval": 180,
+      "mean_prob_diff": -0.5804333765991032,
+      "mean_logit_diff": -3.449760341644287,
+      "diversity_ratio": 1.0002216809710485
+    },
+    "delta_pca": {
+      "method": "delta_pca",
+      "iia": 0.03888888888888889,
+      "n_eval": 180,
+      "mean_prob_diff": -0.4286462455845645,
+      "mean_logit_diff": -2.4053894572787815,
+      "diversity_ratio": 0.9969911277554587
+    },
+    "das": {
+      "method": "das",
+      "iia": 0.19444444444444445,
+      "n_eval": 180,
+      "mean_prob_diff": -0.2693037778850541,
+      "mean_logit_diff": -1.5655661635928684,
+      "diversity_ratio": 1.0008455162520755
+    },
+    "nldas": {
+      "method": "nldas",
+      "iia": 1.0,
+      "n_eval": 180,
+      "mean_prob_diff": 0.9999999382199263,
+      "mean_logit_diff": 24.377210696538288,
+      "diversity_ratio": 0.03652585906292593
+    },
+    "nldas_recon": {
+      "method": "nldas",
+      "iia": 0.85,
+      "n_eval": 180,
+      "mean_prob_diff": 0.43577809466288375,
+      "mean_logit_diff": 1.8030500094095865,
+      "diversity_ratio": 0.24755397842257543
+    },
+    "structured_vae": {
+      "iia": 0.29444444444444445,
+      "n_eval": 180,
+      "mean_prob_diff": -0.032973043535053474,
+      "mean_logit_diff": -0.097075621287028,
+      "diversity_ratio": 0.6733334239126548,
+      "method": "structured_vae"
+    },
+    "pi_vae": {
+      "iia": 0.4222222222222222,
+      "n_eval": 180,
+      "mean_prob_diff": 0.14193139334955857,
+      "mean_logit_diff": 1.0037353727552625,
+      "diversity_ratio": 0.6833493813670708,
+      "method": "pi_vae"
+    },
+    "pi_sae": {
+      "iia": 1.0,
+      "n_eval": 180,
+      "mean_prob_diff": 0.7250311521565083,
+      "mean_logit_diff": 4.896968497170342,
+      "diversity_ratio": 0.837658376751816,
+      "method": "pi_sae"
+    }
+  },
+  "task": "ioi",
+  "k": 1
+}
