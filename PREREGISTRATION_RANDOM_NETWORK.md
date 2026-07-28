@@ -229,3 +229,45 @@ SHAs (`887ff8f2...` and `3123689540df...` respectively) and are not re-attribute
 The 5000-step run currently in flight was launched under `3123689540df...`; if its
 H1 verdict stands, it is reported with global $\rho$ only, and grouped $\rho$ comes
 from the re-run.
+
+## Outcome, convergence sweep (recorded 2026-07-28, after unblinding)
+
+Results at `results/random_network_control/`. Global $\rho$ only; the run
+predates Amendment 2, so grouped $\rho$ is not available for these numbers.
+
+| NL-DAS steps | Arm | NL-DAS IIA | NL-DAS $\rho$ | Structured VAE IIA | Structured VAE $\rho$ |
+|---|---|---|---|---|---|
+| 200 | random | 0.722 | 1.585 | 0.000 | 0.672 |
+| 2000 | random | 0.906 | 8.050 | 0.000 | 0.705 |
+| 5000 | random | **0.950** | 3.881 | **0.000** | 0.712 |
+| 200 | pretrained | 1.000 | 0.037 | 1.000 | 0.838 |
+| 2000 | pretrained | 1.000 | 0.055 | 1.000 | 0.834 |
+
+**H1 confirmed.** NL-DAS reaches $0.950$ at 5000 steps and $0.906$ at 2000,
+both above the $0.90$ threshold. The two step counts agree, so the
+higher-governs rule is not invoked. Accuracy is monotone in step count
+($0.722 \to 0.906 \to 0.950$), supporting the recorded diagnosis that the
+first attempt was undertrained rather than mis-specified.
+
+**H2 confirmed.** The structured VAE reaches $0.000$ on the random arm at every
+step count, against a threshold of $\leq 0.30$, and is $0.950$ below NL-DAS
+against a required gap of $0.50$.
+
+**H3 confirmed.** Structured VAE $\rho$ on the random arm is $0.712$ against
+$0.834$ pretrained. The near-zero accuracy is not accompanied by a collapsed
+decoder, so it reflects absent structure rather than encoder degeneracy.
+
+**H4 confirmed.** The matched pretrained arm reproduces the reported IOI numbers
+at both step counts.
+
+**Reading, per the decision table fixed in advance.** The constraints exclude the
+failure mode \citet{sutter2025nonlinear} identify. This is also the pre-committed
+answer to the leakage objection: a randomly initialised network contains no
+causal structure, so accuracy above chance there is leakage, and the structured
+VAE scores zero. Had it scored above $0.30$ the claim would have been withdrawn.
+
+**Unresolved and reported as such.** NL-DAS $\rho$ exceeds 1 on the random arm at
+every step count ($1.585$, $8.050$, $3.881$), and NL-DAS+recon reaches $1.995$ on
+the *pretrained* arm at 2000 steps, so the effect is not confined to random
+networks. The manuscript currently interprets only $\rho \to 0$. A reading for
+$\rho \gg 1$ is required before publication and is not attempted here.
