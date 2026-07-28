@@ -626,21 +626,22 @@ output structure. Points are jittered horizontally for visibility.}
 \label{sec:linear_das_fails}
 
 Modular addition shows that the Grassmannian assumption can hold at one
-subspace dimension and fail at another. We fit DAS across
-$k \in \{1, 2, 4, 8, 16, 32\}$ on residual-stream activations from a grokked
-model (test accuracy $0.9996$). DAS is near chance at small $k$
-($\IIA = 0.006$ at $k = 1$, $0.022$ at $k = 2$, $0.283$ at $k = 4$) and reaches
-$\IIA = 1.000$ at $k = 8$ (Table~\ref{tab:ksweep_addition}).
+subspace dimension and fail at another. We fit each method across
+$k \in \{1, 2, 4, 8, 16, 32, 64\}$ on residual-stream activations from grokked
+models, over three seeds (Table~\ref{tab:ksweep_addition}).
 
-The dimension at which DAS succeeds is informative. The model encodes the
-``identity'' of each number $a$ as $(\cos 2\pi f a / p, \sin 2\pi f a / p)$
-for key frequencies $f$ \citep{nanda2023progress}. This representation lies on a
-circle, which is is a curve rather than a linear subspace, though it lies within the span of
-its Fourier components; four key frequencies at two components each span
-eight dimensions. DAS succeeds once $k$ reaches that span. The linear constraint
-is therefore mismatched to the required dimension at small $k$ rather than
-incapable in principle, and reporting DAS at a single small $k$ would
-misrepresent it.
+Linear DAS is near chance at small $k$ and reaches $\IIA = 1.000 \pm 0.000$ at
+$k = 16$. Its behaviour at $k = 8$ varies widely across seeds
+($0.806 \pm 0.570$), so 16 is the dimension at which the linear method becomes
+reliable. At $k = d$ the projection is the identity and the intervened activation
+equals the source activation, so any linear method attains $\IIA = 1$ trivially;
+the question is how far below $d$ a method can go.
+
+Unconstrained nonlinear DAS plateaus rather than converging. It reaches
+$0.939 \pm 0.050$ at $k = 16$ and does not improve thereafter
+($0.961 \pm 0.108$ at $k = 32$, $0.956 \pm 0.063$ at $k = 64$), failing to
+recover the causal variable at any dimension tested, including half the model's
+width.
 
 This motivates the label-conditional structured VAE approach (\S\ref{sec:vae_results}):
 a nonlinear encoder can map the circular representation to a structured
@@ -651,22 +652,29 @@ variable exists but is nonlinear.
 \begin{table}[t]
 \centering
 \small
-\begin{tabular}{l rrrrrr}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{l ccccccc}
 \toprule
-& $k{=}1$ & $k{=}2$ & $k{=}4$ & $k{=}8$ & $k{=}16$ & $k{=}32$ \\
+& $k{=}1$ & $k{=}2$ & $k{=}4$ & $k{=}8$ & $k{=}16$ & $k{=}32$ & $k{=}64$ \\
 \midrule
-DAS (linear)            & 0.006 & 0.022 & 0.283 & 1.000 & 1.000 & 1.000 \\
-NL-DAS                  & 0.083 & 0.422 & 0.689 & 0.770 & 0.861 & 0.806 \\
-\quad $\rho_\text{NL}$  & 0.12  & 0.29  & 0.43  & 0.46  & 0.54  & 0.33 \\
-Structured VAE          & 1.000 & 1.000 & 1.000 & 1.000 & 1.000 & 1.000 \\
-\quad $\rho_\text{VAE}$ & 1.00  & 1.00  & 1.00  & 1.00  & 0.99  & 1.00 \\
+DAS (linear)   & 0.013 & 0.080 & 0.354 & 0.806 & \textbf{1.000} & 1.000 & 1.000 \\
+\quad $\pm$    & 0.016 & 0.217 & 0.769 & 0.570 & 0.000 & 0.000 & 0.000 \\
+\addlinespace
+NL-DAS         & 0.198 & 0.526 & 0.739 & 0.761 & 0.939 & 0.961 & 0.956 \\
+\quad $\pm$    & 0.244 & 0.435 & 0.337 & 0.395 & 0.050 & 0.108 & 0.063 \\
+\addlinespace
+Structured VAE & 0.926 & \textbf{1.000} & 1.000 & 1.000 & 1.000 & 1.000 & 1.000 \\
+\quad $\pm$    & 0.319 & 0.000 & 0.000 & 0.000 & 0.000 & 0.000 & 0.000 \\
 \bottomrule
 \end{tabular}
-\caption{Grokked modular addition (test accuracy $0.9996$) across subspace
-dimension. Linear DAS reaches $\IIA = 1.000$ at $k = 8$, the span of four
-Fourier frequencies at two components each. NL-DAS does not exceed $0.861$ at
-any dimension tested, and its accuracy and diversity ratio both decline from
-$k = 16$ to $k = 32$. Single runs per cell.}
+\caption{Interchange accuracy on grokked modular addition across subspace
+dimension. Mean over three seeds with a 95\% confidence interval from Student's
+$t$; the grokking model is retrained per seed and each seed sweeps every $k$
+against its own model. The structured VAE is exact from $k = 2$ with no
+variation across seeds. Linear DAS becomes reliable at $k = 16$, and its
+$k = 8$ cell carries the widest interval in the table. NL-DAS plateaus near
+$0.95$ from $k = 16$ and does not reach the causal variable at any dimension
+tested, including $k = 64$, half the model's width.}
 \label{tab:ksweep_addition}
 \end{table}
 

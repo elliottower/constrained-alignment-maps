@@ -1,0 +1,74 @@
+{
+  "k64": {
+    "methods": {
+      "random": {
+        "method": "random",
+        "iia": 0.2611111111111111,
+        "n_eval": 180,
+        "mean_prob_diff": -0.054813193758816235,
+        "mean_logit_diff": -0.8897084103690254,
+        "diversity_ratio": 0.9022220788149298
+      },
+      "delta_pca": {
+        "method": "delta_pca",
+        "iia": 1.0,
+        "n_eval": 180,
+        "mean_prob_diff": 0.9992457436057326,
+        "mean_logit_diff": 33.60649883846442,
+        "diversity_ratio": 1.0000172157476463
+      },
+      "das": {
+        "method": "das",
+        "iia": 1.0,
+        "n_eval": 180,
+        "mean_prob_diff": 0.9996646377258598,
+        "mean_logit_diff": 32.004511365294455,
+        "diversity_ratio": 0.995684207932831
+      },
+      "nldas": {
+        "method": "nldas",
+        "iia": 0.9611111111111111,
+        "n_eval": 180,
+        "mean_prob_diff": 0.965691454308379,
+        "mean_logit_diff": 28.195123397641712,
+        "diversity_ratio": 0.9274060373255965
+      },
+      "nldas_recon": {
+        "method": "nldas",
+        "iia": 0.9888888888888889,
+        "n_eval": 180,
+        "mean_prob_diff": 0.9659122277246642,
+        "mean_logit_diff": 26.03622757461336,
+        "diversity_ratio": 0.8244771025917329
+      },
+      "structured_vae": {
+        "iia": 0.0,
+        "n_eval": 180,
+        "mean_prob_diff": -0.9995900349762594,
+        "mean_logit_diff": -32.45504875861936,
+        "diversity_ratio": 0.7189877635207792,
+        "method": "structured_vae"
+      },
+      "pi_vae": {
+        "iia": 0.0,
+        "n_eval": 180,
+        "mean_prob_diff": -0.9995877463797952,
+        "mean_logit_diff": -31.745273166729344,
+        "diversity_ratio": 0.6991806850444945,
+        "method": "pi_vae"
+      },
+      "pi_sae": {
+        "iia": 1.0,
+        "n_eval": 180,
+        "mean_prob_diff": 0.9992546518654125,
+        "mean_logit_diff": 33.12610439120068,
+        "diversity_ratio": 0.9982557458073211,
+        "method": "pi_sae"
+      }
+    },
+    "task": "addition",
+    "grokked": true,
+    "test_accuracy": 0.9993287920951843,
+    "k": 64
+  }
+}
