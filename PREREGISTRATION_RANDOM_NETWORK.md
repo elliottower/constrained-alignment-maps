@@ -398,11 +398,19 @@ collapse or over-dispersion; at convergence it finds a solution that is both
 $\IIA \approx 1$ and metrically indistinguishable from a faithful one.
 
 **Consequence for the paper.** $\rho$ is demoted from a co-equal faithfulness
-metric to a secondary, non-decisive signal. Interchange accuracy on a randomly
-initialised model is the diagnostic that separated the methods in all five runs
-and is the one that generalises across optimisation regimes. That $\rho$ fails at
-convergence is the argument for why the random-network control is load-bearing
-rather than redundant: were $\rho$ sufficient, the control would not be needed.
+metric to a secondary, non-decisive signal. The diagnostic that separated the
+methods in all five runs is interchange accuracy on a randomly initialised model,
+and that test is \citet{sutter2025nonlinear}'s, not ours: measuring IIA on random
+networks is their empirical contribution, and their result is what establishes
+that high accuracy there is uninformative. Our addition is to apply it to a
+\emph{constrained} map, which they did not test, under a decision rule fixed
+before the run.
+
+That $\rho$ fails at convergence is the argument for why their control is
+load-bearing rather than redundant: were an auxiliary faithfulness metric
+sufficient, one could check $\rho$ on the pretrained arm and stop. It is not
+sufficient, so the random-network test carries the claim. Attribution matters
+here precisely because the test is doing the most work in the paper.
 
 **Unexplained and flagged.** NL-DAS+recon reaches $\rho_w = 2.249$ on the
 *pretrained* arm at $\IIA = 0.944$, so high dispersion with high accuracy occurs
