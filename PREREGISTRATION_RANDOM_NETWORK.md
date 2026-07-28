@@ -271,3 +271,34 @@ every step count ($1.585$, $8.050$, $3.881$), and NL-DAS+recon reaches $1.995$ o
 the *pretrained* arm at 2000 steps, so the effect is not confined to random
 networks. The manuscript currently interprets only $\rho \to 0$. A reading for
 $\rho \gg 1$ is required before publication and is not attempted here.
+
+## Amendment 3 — two diagnostic runs, neither confirmatory (2026-07-28, before results)
+
+**H1 through H4 are settled** on the sweep reported above and are not revisited.
+Both runs described here investigate the unexplained $\rho \gg 1$ pattern. Neither
+re-tests an IIA threshold, and no outcome of either changes the status of any
+hypothesis. This is stated so that a reader encountering three random-arm runs
+knows which is authoritative: the 5000-step run above.
+
+**Run A: is $\rho = 8.05$ reproducible?** On the random arm, global $\rho$ for
+NL-DAS is non-monotonic in optimisation steps: $1.585$, $8.050$, $3.881$ at 200,
+2000 and 5000. Every cell is a single run, so a peak at 2000 and noise around a
+settled value are not currently distinguishable. Adding step counts does not
+separate them; replicates at a fixed step count do. Three seeds at 2000 steps.
+
+Fixed in advance: if the three seeds span a range narrower than $2.0$ in $\rho$,
+the value is treated as reproducible and the non-monotonicity is reported as a
+property of the optimisation. If the range exceeds $2.0$, $\rho$ on the random arm
+is reported as unstable across seeds and no step-count trend is claimed from the
+three-point sweep.
+
+**Run B: grouped $\rho$.** Re-run under the Amendment 2 script so `rho_within`
+is available with its numerator and denominator separated. This may dissolve the
+$\rho \gg 1$ pattern, because within-label spread cannot be inflated by
+across-label variation the way the global metric can. If it does not, the paper
+reports $\rho \gg 1$ as unexplained rather than supplying a mechanism after the
+fact.
+
+**Neither run is a condition for reporting the random-network result.** If both
+fail or are inconclusive, the section is written with $\rho \gg 1$ stated as an
+open observation.
