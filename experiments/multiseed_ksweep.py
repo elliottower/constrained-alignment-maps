@@ -927,7 +927,8 @@ def main(tasks: list[str] = None, ks: str = "1,2,4,8,16,32", seed: int = 999):
 
     all_results = {}
     k_list = [int(x) for x in str(ks).split(",")]
-    out_dir = f"/results/multiseed_ksweep/seed{seed}"
+    ktag = "k" + "-".join(str(x) for x in k_list)
+    out_dir = f"/results/multiseed_ksweep/seed{seed}/{ktag}"
     os.makedirs(out_dir, exist_ok=True)
 
     for task in tasks:
@@ -949,8 +950,15 @@ def main(tasks: list[str] = None, ks: str = "1,2,4,8,16,32", seed: int = 999):
             elif task in GROK_EPOCHS:
                 result[f"k{k}"] = run_grokking_task(task, device, k=k, seed=seed,
                                                     model_bundle=bundle)
-        else:
-            log_msg(f"Unknown task: {task}, skipping")
+            else:
+                log_msg(f"Unknown task: {task}, skipping")
+                continue
+            # Persist after every k so a stopped run keeps completed cells.
+            with open(os.path.join(out_dir, f"{task}.json"), "w") as f:
+                json.dump(result, f, indent=2, default=str)
+            results_vol.commit()
+
+        if not result:
             continue
 
         elapsed = time.time() - t0
