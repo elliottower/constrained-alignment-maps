@@ -1548,12 +1548,17 @@ untested.
 
 \paragraph{Disentangled representations and causal variables.}
 \citet{narayanaswamy2017learning} introduced semi-supervised VAEs for
-disentanglement. Recent work on identifiable representations
-\citep{khemakhem2020variational} establishes conditions under which latent
-factors can be recovered. \citet{locatello2019challenging} proved that
-unsupervised disentanglement is impossible without inductive biases; our
-structured prior is precisely the auxiliary supervision their theorem
-requires. Our application differs in that we evaluate
+disentanglement. The identifiability results we rely on descend from nonlinear
+independent component analysis: \citet{hyvarinen2019nonlinear} showed that
+nonlinear ICA, unidentifiable in general, becomes identifiable when the latent
+variables are conditioned on an observed auxiliary variable, and
+\citet{khemakhem2020variational} carried that result into a variational
+autoencoder as iVAE. This is why the constraint in our method is a
+\emph{label-conditional} prior rather than any convenient regulariser: the
+auxiliary variable is the ingredient the identifiability theorem requires.
+\citet{locatello2019challenging} approach the same point from the other side,
+proving that unsupervised disentanglement is impossible without inductive
+biases. Our application differs in that we evaluate
 disentanglement through causal interchange (IIA), not reconstruction quality,
 connecting the VAE literature to causal abstraction.
 
