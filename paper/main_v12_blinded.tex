@@ -371,7 +371,7 @@ fraction is the proportion of test inputs satisfying this rotation property.
 Random orthogonal subspaces of the same dimension serve as controls; across all
 operations, random-subspace equivariance is below 1\%.
 
-\subsection{Structured VAE for nonlinear causal variables}
+\subsection{Structured VAE}
 \label{sec:vae_method}
 
 For each trained grokking model, we cache residual-stream activations at the
@@ -491,7 +491,7 @@ exploiting distributional regularities in the training set.
 \section{Results}
 \label{sec:results}
 
-\subsection{The atlas: a grokking-governed spectrum}
+\subsection{Grokking atlas}
 
 At a single prime ($p{=}113$, 1-layer), the 14 operations appeared to partition
 into three classes (Table~\ref{tab:main_results}).
@@ -627,7 +627,7 @@ output structure. Points are jittered horizontally for visibility.}
 \label{fig:iia_vs_equiv}
 \end{figure}
 
-\subsection{Linear DAS fails on grokked modular addition}
+\subsection{Linear DAS on grokked addition}
 \label{sec:linear_das_fails}
 
 Modular addition shows that the Grassmannian assumption can hold at one
@@ -687,7 +687,7 @@ addition under two seeds: one grokked (circular), one not (scattered).}
 \label{fig:circle_geometry}
 \end{figure}
 
-\subsection{Stochastic grokking: the same operation, opposite outcomes}
+\subsection{Stochastic grokking}
 \label{sec:stochastic}
 
 The multi-modulus sweep reveals that stochastic grokking is a pervasive feature of the boundary region rather than an
@@ -723,7 +723,7 @@ See Appendix~\ref{app:equiv_test} for the equivariance test protocol.}
 \label{fig:loss_vs_equiv}
 \end{figure}
 
-\subsection{Memorization artifacts: high IIA, no structure}
+\subsection{Memorization artifacts}
 \label{sec:memorization}
 
 Squaring and cubing reach $\IIA = 0.857$ at $k = 2$ and $\IIA \geq 0.95$ by
@@ -736,7 +736,7 @@ lesson: \textbf{high IIA with low-$k$ saturation is compatible with a lookup
 table}. ``Works for interchange'' and ``is a Grassmannian causal variable'' are
 different claims.
 
-\subsection{$k$-sweep profiles correlate with equivariance}
+\subsection{$k$-sweep profiles and equivariance}
 
 Grassmannian variables saturate at $\IIA \approx 1.0$ by $k = 4$: their causal
 structure is inherently 2-dimensional. Non-Grassmannian variables show gradual IIA
@@ -754,7 +754,7 @@ The separation between the two regimes is visible at every $k$.}
 \label{fig:k_sweep}
 \end{figure}
 
-\subsection{label-conditional structured VAE recovers nonlinear causal variables}
+\subsection{Label-conditional structured VAE}
 \label{sec:vae_results}
 
 We upgrade the vanilla structured VAE to a \textbf{label-conditional structured VAE}: a
@@ -902,7 +902,7 @@ On IOI \citep{wang2022interpretability}, NL-DAS achieves IIA~$= 1.00$,
 but the diversity ratio $\rho \approx 0.05$ (vs.\ $\rho \approx 0.89$ for the
 label-conditional VAE) exposes it as vacuous (Table~\ref{tab:nldas_vacuous}).
 
-\subsection{Unconstrained nonlinear DAS is vacuous}
+\subsection{Unconstrained nonlinear DAS}
 \label{sec:nldas_vacuous}
 
 One response to DAS's linearity constraint is to prepend an MLP
@@ -1047,7 +1047,7 @@ indistinguishable from a random subspace, which is the relevant statement: the
 label-conditional structured VAE's accuracy does not survive removing the label
 supervision, the reconstruction term, training, or the latent partition.
 
-\subsection{A constrained map under Sutter et al.'s random-network test}
+\subsection{Random-network control}
 \label{sec:randomnet}
 
 The sharpest form of \citet{sutter2025nonlinear}'s result is empirical rather
@@ -1102,7 +1102,7 @@ any accuracy above chance there is leakage. The method scores zero. The decision
 rule was fixed before the run: had it exceeded $0.30$, the claim would have been
 withdrawn.
 
-\subsection{Diversity ratio does not detect this vacuity at convergence}
+\subsection{Limits of the diversity ratio}
 \label{sec:rho_fails}
 
 The diversity ratio is ours, and it does not survive this test.
@@ -1215,7 +1215,7 @@ template-specific lookup table partially fails when sentence
 structure changes, yet maintains $\rho = 0.05$, indicating the
 encoder-decoder remains degenerate.
 
-\subsection{Equivariance requires a group action, not linearity}
+\subsection{Group action and linearity}
 
 Affine ($2a + 3b + 5 \bmod 113$) is a linear function that fails to produce a
 Grassmannian variable. Under an additive shift $a \mapsto a + g$ the output
@@ -1232,7 +1232,7 @@ reaching 15\% at $p{=}113$ and 29\% at $p{=}53$ ($k{=}4$): when the argmax is
 stable under the shift it behaves like a shifted identity, and the partial
 equivariance reflects that conditional structure.
 
-\section{The Mechanism: How Grokking Creates Causal Structure}
+\section{Mechanism}
 \label{sec:mechanism}
 
 The atlas (\S\ref{sec:results}) established \emph{what}: causal structure
@@ -1258,7 +1258,7 @@ The two findings most relevant to the Grassmannian interpretation---that
 the causal variable is readable from weight-space without optimization,
 and that the causal subspace is degenerate---are presented below.
 
-\subsection{Weight-space SVD predicts causal geometry}
+\subsection{Weight-space SVD}
 \label{sec:svd_vs_das}
 
 If grokking compresses the solution into a low-rank subspace, can we read the
@@ -1316,7 +1316,7 @@ weight-space and activation-space methods have complementary strengths:
 SVD captures the structural potential of the weight matrices, while DAS
 captures the functional use of that structure under the data distribution.
 
-\subsection{Subspace identity is degenerate}
+\subsection{Subspace degeneracy}
 \label{sec:gauge_freedom}
 
 If grokking produces a specific causal subspace, we might expect different
@@ -1377,7 +1377,7 @@ not a point on $\Gr(k,d)$ but an orbit, and functional diagnostics
 \section{Discussion}
 \label{sec:discussion}
 
-\subsection{Four diagnostics, four failure modes}
+\subsection{Evaluation diagnostics}
 \label{sec:diagnostics}
 
 The evaluations we report are not ordered by strength. Each catches a different
@@ -1425,7 +1425,7 @@ reach high accuracy readily and fail on faithfulness. The label-conditional
 structured VAE passed both in our experiments, which we attribute to the ELBO's
 reconstruction and regularisation terms excluding the degenerate solutions.
 
-\subsection{Grokking enables causal structure---linear or nonlinear}
+\subsection{Grokking and causal structure}
 
 The multi-condition atlas shows that grokking is the process by which a model's
 internal representation transitions from an unstructured memorization encoding to
