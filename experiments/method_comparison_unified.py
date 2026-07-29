@@ -289,9 +289,13 @@ def run_delta_pca(train_data, eval_data, model, hook_name, device, k):
 def train_das(model, train_data, hook_name, device, k=1, n_steps=300):
     d_model = train_data[0]["base_act"].shape[0]
 
-    deltas = torch.stack([d["source_act"] - d["base_act"] for d in train_data])
-    _, _, Vh = torch.linalg.svd(deltas, full_matrices=False)
-    A = nn.Parameter(Vh[:k].T.clone().to(device))
+    # Random orthogonal initialisation, matching the DAS reference implementation
+    # (pyvene LowRankRotateLayer(init_orth=True), as used by MIB). An earlier
+    # version warm-started from the top-k right singular vectors of the
+    # intervention deltas; that is a different method and is not standard DAS.
+    A0 = torch.empty(d_model, k, device=device)
+    nn.init.orthogonal_(A0)
+    A = nn.Parameter(A0)
     optimizer = torch.optim.Adam([A], lr=1e-3)
 
     batch_size = 16

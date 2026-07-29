@@ -286,21 +286,43 @@ def run_delta_pca(train_data, eval_data, model, hook_name, device, k):
 # Method 2: DAS (trained rotation)
 # ===================================================================
 
-def train_das(model, train_data, hook_name, device, k=1, n_steps=300, init="random"):
+def principal_angles(Q1, Q2):
+    """Canonical angles between two subspaces; svals of Q1^T Q2 are cos(theta)."""
+    svals = torch.linalg.svdvals(Q1.T @ Q2).clamp(-1.0, 1.0)
+    return torch.acos(svals)
+
+
+def grassmann_distance(Q1, Q2):
+    """Geodesic distance on Gr(k,d)."""
+    return torch.sqrt((principal_angles(Q1, Q2) ** 2).sum()).item()
+
+
+def subspace_overlap(Q1, Q2):
+    """Mean squared cosine of principal angles; chance is k/d for random subspaces."""
+    svals = torch.linalg.svdvals(Q1.T @ Q2).clamp(-1.0, 1.0)
+    return (svals ** 2).mean().item()
+
+
+def ff_svd_subspace(model, k):
+    """Top-k right singular subspace of the feedforward product W_in @ W_out."""
+    W_in = model.blocks[0].mlp.W_in.detach()
+    W_out = model.blocks[0].mlp.W_out.detach()
+    _, _, Vh = torch.linalg.svd(W_in @ W_out, full_matrices=False)
+    Q, _ = torch.linalg.qr(Vh[:k].T)
+    return Q
+
+
+def train_das(model, train_data, hook_name, device, k=1, n_steps=300, init="pca"):
     d_model = train_data[0]["base_act"].shape[0]
 
-    # Random orthogonal initialisation, matching the DAS reference implementation
-    # (pyvene LowRankRotateLayer(init_orth=True), as used by MIB). An earlier
-    # version warm-started from the top-k right singular vectors of the
-    # intervention deltas; that is a different method and is not standard DAS.
-    if init == "delta_pca":
+    if init == "random":
+        # Independent starting point: without this, every fit on a given model
+        # begins from the same deterministic PCA solution and clusters trivially.
+        A = nn.Parameter(torch.randn(d_model, k, device=device))
+    else:
         deltas = torch.stack([d["source_act"] - d["base_act"] for d in train_data])
         _, _, Vh = torch.linalg.svd(deltas, full_matrices=False)
         A = nn.Parameter(Vh[:k].T.clone().to(device))
-    else:
-        A0 = torch.empty(d_model, k, device=device)
-        nn.init.orthogonal_(A0)
-        A = nn.Parameter(A0)
     optimizer = torch.optim.Adam([A], lr=1e-3)
 
     batch_size = 16
@@ -332,10 +354,91 @@ def train_das(model, train_data, hook_name, device, k=1, n_steps=300, init="rand
     return (Q @ Q.T).detach()
 
 
-def run_das(train_data, eval_data, model, hook_name, device, k, n_steps=300, init="random"):
-    proj = train_das(model, train_data, hook_name, device, k=k, n_steps=n_steps, init=init)
-    return _eval_linear(model, eval_data, proj, hook_name, device,
-                        "das" if init == "random" else "das_pca")
+
+# ===================================================================
+# DAS matching the MIB / pyvene reference implementation
+#
+# MIB builds its subspace featurizer as
+#     LowRankRotateLayer(d, k, init_orth=True)
+#     -> torch.nn.utils.parametrizations.orthogonal(...)
+# i.e. a RANDOM ORTHOGONAL initialisation kept on the Stiefel manifold
+# throughout optimisation. The delta-PCA initialisation used elsewhere in this
+# file is a different (warm-started) method and is reported separately.
+# pyvene is not a dependency here; this reproduces the same construction.
+# ===================================================================
+
+class RotateLayer(nn.Module):
+    """Orthogonally-initialised (d, k) rotation, matching LowRankRotateLayer."""
+
+    def __init__(self, d, k):
+        super().__init__()
+        w = torch.empty(d, k)
+        nn.init.orthogonal_(w)
+        self.weight = nn.Parameter(w)
+
+    def forward(self, x):
+        return x @ self.weight
+
+
+def train_das_mib(model, train_data, hook_name, device, k=1, n_steps=300,
+                  n_restarts=1, lr=1e-3):
+    """Standard DAS: random orthogonal init, orthogonal parametrisation.
+
+    n_restarts > 1 reproduces the best-of-N-seeds protocol the DAS paper
+    describes for handling initialisation sensitivity; the best run by training
+    objective is returned.
+    """
+    d_model = train_data[0]["base_act"].shape[0]
+    best_proj, best_loss = None, float("inf")
+
+    for restart in range(n_restarts):
+        rotate = torch.nn.utils.parametrizations.orthogonal(
+            RotateLayer(d_model, k).to(device)
+        )
+        optimizer = torch.optim.Adam(rotate.parameters(), lr=lr)
+        last = float("inf")
+        for _ in range(n_steps):
+            optimizer.zero_grad()
+            Q = rotate.weight
+            proj = Q @ Q.T
+            batch = random.sample(train_data, min(16, len(train_data)))
+            loss = torch.tensor(0.0, device=device)
+            for d in batch:
+                intervention = proj @ (d["source_act"] - d["base_act"])
+
+                def make_hook(_iv):
+                    def hk(act, hook):
+                        new = act.clone()
+                        new[0, -1, :] += _iv
+                        return new
+                    return hk
+
+                logits = model.run_with_hooks(
+                    d["base_toks"], fwd_hooks=[(hook_name, make_hook(intervention))]
+                )
+                loss -= logits[0, -1, :].log_softmax(dim=-1)[d["src_id"]]
+            loss = loss / len(batch)
+            loss.backward()
+            optimizer.step()
+            last = loss.item()
+        if last < best_loss:
+            best_loss = last
+            with torch.no_grad():
+                best_proj = (rotate.weight @ rotate.weight.T).detach()
+    return best_proj
+
+
+def run_das_mib(train_data, eval_data, model, hook_name, device, k,
+                n_steps=300, n_restarts=1):
+    proj = train_das_mib(model, train_data, hook_name, device, k=k,
+                         n_steps=n_steps, n_restarts=n_restarts)
+    r = _eval_linear(model, eval_data, proj, hook_name, device, "das_mib")
+    return r
+
+
+def run_das(train_data, eval_data, model, hook_name, device, k, n_steps=300):
+    proj = train_das(model, train_data, hook_name, device, k=k, n_steps=n_steps)
+    return _eval_linear(model, eval_data, proj, hook_name, device, "das")
 
 
 # ===================================================================
@@ -753,15 +856,6 @@ def run_comparison(model, pairs, all_acts, labels_for_vae, d_model, n_classes,
     results["methods"]["das"] = r
     _log_result("das", r)
 
-    # Same optimiser, same data, warm-started from the top-k right singular
-    # vectors of the intervention deltas. Reported separately: this is not
-    # standard DAS, and whether the warm start helps is the question.
-    log_msg("  Running DAS (delta-PCA init)...")
-    r = run_das(train_data, eval_data, model, hook_name, device, k,
-                n_steps=das_steps, init="delta_pca")
-    results["methods"]["das_pca"] = r
-    _log_result("das_pca", r)
-
     # 3. NL-DAS
     log_msg(f"  Running NL-DAS ({nldas_steps} steps)...")
     r = run_nldas(train_data, eval_data, model, hook_name, device, k, n_steps=nldas_steps)
@@ -928,6 +1022,90 @@ def run_ioi_task(device, k=1):
 # ===================================================================
 # Modal entry point
 # ===================================================================
+
+@app.function(gpu="A100", timeout=86400, volumes={"/results": results_vol})
+def decompose(n_models: int = 6, n_fits: int = 10, k: int = 2, op: str = "multiplication"):
+    """Separate model-level degeneracy from DAS fitting-level degeneracy.
+
+    A_pca    one model, n_fits DAS fits, PCA init  -> batch-sampling sensitivity only
+    A_random one model, n_fits DAS fits, random init -> does the MODEL pin a subspace?
+    B        n_models models, one PCA fit each     -> the paper's current claim
+    SVD      n_models models, top-k of W_in @ W_out -> is weight geometry consistent?
+
+    Chance overlap for random k-dim subspaces of R^d is k/d.
+    """
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    p_mod = OP_MODULUS.get(op, P)
+    epochs = GROK_EPOCHS.get(op, 40000)
+    out = {"op": op, "k": k, "n_models": n_models, "n_fits": n_fits}
+
+    log_msg(f"training {n_models} models of {op} (p={p_mod})")
+    bundles, svd_Qs = [], []
+    for s in range(n_models):
+        b = train_grokking_model(op, p_mod, device, epochs, seed=1000 + s)
+        bundles.append(b)
+        svd_Qs.append(ff_svd_subspace(b[0], k))
+        log_msg(f"  model seed {1000+s}: test_acc={b[4]:.4f}")
+    out["test_accs"] = [round(float(b[4]), 4) for b in bundles]
+
+    def pairwise(Qs):
+        ov, ds = [], []
+        for i in range(len(Qs)):
+            for j in range(i + 1, len(Qs)):
+                ov.append(subspace_overlap(Qs[i], Qs[j]))
+                ds.append(grassmann_distance(Qs[i], Qs[j]))
+        return {"overlap_mean": sum(ov) / len(ov), "overlap_min": min(ov),
+                "overlap_max": max(ov), "dist_mean": sum(ds) / len(ds),
+                "dist_min": min(ds), "dist_max": max(ds), "n_pairs": len(ov)}
+
+    d_model = bundles[0][0].cfg.d_model
+    out["chance_overlap"] = k / d_model
+
+    # A: one model, repeated fits, both initialisations
+    model0, dataset0, labels0, test_idx0, _ = bundles[0]
+    pairs0, _ = generate_grok_pairs(model0, dataset0, labels0, test_idx0, device)
+    hook = "blocks.0.hook_resid_post"
+    for init in ("pca", "random"):
+        Qs = []
+        for f in range(n_fits):
+            torch.manual_seed(7000 + f)
+            random.seed(7000 + f)
+            proj = train_das(model0, pairs0[:int(0.7 * len(pairs0))], hook, device,
+                             k=k, n_steps=300, init=init)
+            Qs.append(torch.linalg.qr(proj[:, :k] if proj.shape[1] > k else proj)[0]
+                      if proj.ndim == 2 and proj.shape[0] == proj.shape[1]
+                      else torch.linalg.qr(proj)[0])
+        out[f"A_{init}"] = pairwise(Qs)
+        log_msg(f"  A_{init}: overlap={out[f'A_{init}']['overlap_mean']:.4f} "
+                f"(chance {out['chance_overlap']:.4f})")
+
+    # B: across models, one fit each
+    QsB = []
+    for b in bundles:
+        m, ds_, lb, ti, _ = b
+        prs, _ = generate_grok_pairs(m, ds_, lb, ti, device)
+        torch.manual_seed(0)
+        proj = train_das(m, prs[:int(0.7 * len(prs))], hook, device, k=k, n_steps=300)
+        QsB.append(torch.linalg.qr(proj)[0])
+    out["B_across_models"] = pairwise(QsB)
+    out["SVD_across_models"] = pairwise(svd_Qs)
+    log_msg(f"  B: overlap={out['B_across_models']['overlap_mean']:.4f}")
+    log_msg(f"  SVD: overlap={out['SVD_across_models']['overlap_mean']:.4f}")
+
+    save_dir = "/results/degeneracy_decomposition"
+    os.makedirs(save_dir, exist_ok=True)
+    with open(f"{save_dir}/{op}_k{k}.json", "w") as f:
+        json.dump(out, f, indent=2, default=str)
+    results_vol.commit()
+    return out
+
+
+@app.local_entrypoint()
+def cli_decompose(n_models: int = 6, n_fits: int = 10, k: int = 2,
+                  op: str = "multiplication"):
+    print(json.dumps(decompose.remote(n_models=n_models, n_fits=n_fits, k=k, op=op),
+                     indent=2, default=str))
+
 
 @app.function(
     gpu="A100",

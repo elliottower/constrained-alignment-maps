@@ -18,12 +18,20 @@ import sys
 # t_{0.975, n-1} for small n; 3 seeds -> 2 df -> 4.303
 T95 = {2: 12.706, 3: 4.303, 4: 3.182, 5: 2.776, 6: 2.571, 7: 2.447, 8: 2.365}
 
-METHODS = ["delta_pca", "das", "nldas", "nldas_recon", "structured_vae",
-           "pi_vae", "pi_sae"]
-DISPLAY = {"das": "DAS (linear)", "nldas": "NL-DAS",
+METHODS = ["delta_pca", "das", "das_pca", "nldas", "nldas_recon",
+           "structured_vae", "pi_vae", "pi_sae"]
+DISPLAY = {"das": "DAS (random init)", "das_pca": "DAS (delta-PCA init)", "nldas": "NL-DAS",
            "nldas_recon": "NL-DAS + recon", "pi_sae": "Structured VAE",
            "delta_pca": "Delta-PCA", "structured_vae": "Structured VAE (plain prior)",
            "pi_vae": "Label-conditional VAE (no expansion)"}
+
+
+def order_stats(xs):
+    """Mean, CI half-width, and max. The max is an upper order statistic whose
+    expectation grows with the number of restarts, so it is reported alongside
+    the mean rather than in place of it."""
+    m, h = ci95(xs)
+    return m, h, max(xs)
 
 
 def ci95(xs):
@@ -63,7 +71,7 @@ def main():
         header = f"{'method':<34}" + "".join(f"{k:>18}" for k in ks)
         print(header)
         for meth in METHODS:
-            cells = []
+            cells, maxes = [], []
             any_present = False
             for k in ks:
                 vals = []
@@ -73,12 +81,16 @@ def main():
                         vals.append(v)
                 if len(vals) == n and n > 0:
                     any_present = True
-                    m, h = ci95(vals)
+                    m, h, mx = order_stats(vals)
                     cells.append(f"{m:.3f}+-{h:.3f}" if h == h else f"{m:.3f}")
+                    maxes.append(f"{mx:.3f}")
                 else:
                     cells.append("--")
+                    maxes.append("--")
             if any_present:
                 print(f"{DISPLAY.get(meth, meth):<34}" + "".join(f"{c:>18}" for c in cells))
+                if metric == "iia":
+                    print(f"{'  (max over seeds)':<34}" + "".join(f"{c:>18}" for c in maxes))
         print()
 
     # LaTeX body for the k-sweep table, IIA only
