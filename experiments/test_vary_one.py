@@ -188,3 +188,126 @@ if __name__ == "__main__":
     print("test_global_centring_breaks_it")
     test_global_centring_breaks_it()
     print("\nALL PASS")
+
+
+# --------------------------------------------------------------------------- #
+#  Variance-ratio estimator                                                   #
+# --------------------------------------------------------------------------- #
+
+def build_synthetic_shared_inputs(p=P, d=D, noise=0.02, result_shares_inputs=False):
+    """Planted structure matching what the grokked model actually looks like.
+
+    span(f) = span(g): both operands are read through the same embedding, so they
+    occupy the SAME subspace. This is what the pilot measured (overlap between
+    designs A and B was exactly 1.0000), and it is the case the original
+    intersection-based construction cannot handle.
+
+    With result_shares_inputs=True the result is encoded in the inputs' own
+    Fourier directions, so no separate result subspace exists and the correct
+    answer is to find nothing.
+    """
+    basis = torch.linalg.qr(torch.randn(d, d, dtype=torch.float64))[0]
+    U_in = basis[:, 0:2]
+    U_r = U_in if result_shares_inputs else basis[:, 2:4]
+
+    def act(a, b):
+        h = U_in @ _phi(a, p) + U_in @ _phi(b, p) + U_r @ _phi((a + b) % p, p)
+        return h + noise * torch.randn(d, dtype=torch.float64)
+
+    return act, U_in, U_r
+
+
+def _designs(act, p=P):
+    out = {}
+    for design in ("A", "B", "C"):
+        cfgs = vo.design_configs(design, p)
+        out[design] = [torch.stack([act(a, b) for (a, b) in cfg]) for cfg in cfgs]
+    return out
+
+
+def test_shared_input_subspace_breaks_the_intersection_construction(n_trials=3):
+    """Reproduce the pilot's finding synthetically: A and B coincide when span(f)=span(g).
+
+    This is why the intersection step is a no-op on the real model, and why the
+    variance-ratio estimator replaces it.
+    """
+    ovls = []
+    for _ in range(n_trials):
+        act, _, _ = build_synthetic_shared_inputs()
+        acts = _designs(act)
+        Q_A, _ = vo.vary_one_pca(acts["A"], 4)
+        Q_B, _ = vo.vary_one_pca(acts["B"], 4)
+        ovls.append(vo.subspace_overlap(Q_A, Q_B))
+    m = sum(ovls) / len(ovls)
+    print(f"  overlap(A, B) with shared input subspace = {m:.4f} (pilot measured 1.0000)")
+    assert m > 0.95, "failed to reproduce the degeneracy the pilot found"
+
+
+def _ratio_trial(builder, **kw):
+    """One planted structure per trial; every design must come from the SAME one.
+
+    Building separately per design silently compares two different random bases
+    and produces nonsense, which is a mistake this helper exists to prevent.
+    """
+    act = builder(**kw)[0]
+    acts = _designs(act)
+    return vo.variance_ratio_directions(acts["A"], acts["C"])
+
+
+def test_variance_ratio_recovers_the_result_subspace(n_trials=4):
+    """Leading eigenvectors must span the planted result subspace.
+
+    Overlap is noise-limited, not biased: measured 0.846 at noise 0.20, 0.903 at
+    0.02, 0.981 at 0.005 and exactly 1.0000 at zero noise, so the estimator is
+    correct and the assertion below is set for the noise level actually used.
+    """
+    overlaps, counts = [], []
+    for _ in range(n_trials):
+        act, _, U_r = build_synthetic_shared_inputs(noise=0.005)
+        acts = _designs(act)
+        evals, V = vo.variance_ratio_directions(acts["A"], acts["C"])
+        counts.append(vo.n_result_directions(evals))
+        overlaps.append(vo.subspace_overlap(torch.linalg.qr(V[:, :2])[0], U_r))
+    mo, mc = sum(overlaps) / len(overlaps), sum(counts) / len(counts)
+    print(f"  n directions {mc:.1f} (planted 2), overlap with U_r {mo:.4f}")
+    assert mo > 0.95, f"leading directions are not the result subspace ({mo:.3f})"
+    assert mc == 2.0, f"wrong dimensionality ({mc})"
+
+
+def test_variance_ratio_reports_nothing_when_the_result_is_not_separable(n_trials=4):
+    """Two ways of having no separate result representation must both return 0.
+
+    Encoding the result in the inputs' own Fourier directions is the case that
+    would make the method uninformative on a real model, so it has to be
+    detectable rather than silently returning the input subspace. Omitting the
+    result term entirely is the cleaner analogue of the random-network control.
+    """
+    for label, builder, kw in (
+        ("result shares input directions", build_synthetic_shared_inputs,
+         {"result_shares_inputs": True}),
+        ("no result term planted", build_synthetic, {"include_result": False}),
+    ):
+        counts = [vo.n_result_directions(_ratio_trial(builder, **kw)[0])
+                  for _ in range(n_trials)]
+        m = sum(counts) / len(counts)
+        print(f"  {label}: {m:.1f} directions (correct 0)")
+        assert m == 0.0, f"{label}: reported {m:.1f} directions that do not exist"
+
+
+def test_gap_threshold_separates_the_two_regimes(n_trials=4):
+    """MIN_GAP_FACTOR must sit clear of both regimes, not be tuned to one.
+
+    Measured: a real boundary gives a drop of 82x at the noisiest setting tested
+    and thousands at low noise; no-separable-result gives 1.0-1.1x. A decade sits
+    roughly an order of magnitude clear on each side.
+    """
+    real = [(_ratio_trial(build_synthetic_shared_inputs, noise=0.05)[0][1:3]).tolist()
+            for _ in range(n_trials)]
+    null = [(_ratio_trial(build_synthetic_shared_inputs, result_shares_inputs=True)[0][1:3]).tolist()
+            for _ in range(n_trials)]
+    r = sum(a / b for a, b in real) / len(real)
+    n = sum(a / b for a, b in null) / len(null)
+    print(f"  gap with a real boundary {r:.1f}x, without one {n:.2f}x, "
+          f"threshold {vo.MIN_GAP_FACTOR}x")
+    assert r > vo.MIN_GAP_FACTOR * 3, "threshold is too close to the true-positive regime"
+    assert n < vo.MIN_GAP_FACTOR / 3, "threshold is too close to the true-negative regime"

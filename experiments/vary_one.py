@@ -26,6 +26,8 @@ on machines without torch installed.
 
 from __future__ import annotations
 
+import math
+
 try:
     import torch
 except (ImportError, AttributeError):
@@ -169,3 +171,90 @@ def overlap_null(d, k, n_pairs=2000, seed=0):
         "n_pairs": n,
         "analytic_k_over_d": k / d,
     }
+
+
+# Minimum multiplicative drop in the eigenvalue spectrum for a boundary to
+# count as real. See n_result_directions for how it was chosen.
+MIN_GAP_FACTOR = 10.0
+
+
+# --------------------------------------------------------------------------- #
+#  Variance-ratio estimator (preferred over subspace subtraction)             #
+# --------------------------------------------------------------------------- #
+
+def within_config_covariance(acts_by_config, shrinkage=1e-3):
+    """Covariance of within-configuration residuals, with Ledoit-Wolf-style shrink.
+
+    Shrinkage toward a scaled identity keeps the generalized eigenproblem
+    well-posed when a design's residuals are rank-deficient in some direction.
+    """
+    centred = [A - A.mean(dim=0, keepdim=True) for A in acts_by_config]
+    X = torch.cat(centred, dim=0).double()
+    S = (X.T @ X) / max(X.shape[0] - 1, 1)
+    return (1 - shrinkage) * S + shrinkage * torch.eye(S.shape[0], dtype=S.dtype) * S.diag().mean()
+
+
+def variance_ratio_directions(acts_numer, acts_denom, shrinkage=1e-3):
+    """Directions maximising within-config variance in one design over another.
+
+    Solves the generalized eigenproblem Sigma_numer v = lambda Sigma_denom v via
+    Cholesky whitening of the denominator.
+
+    Applied with numer = design A (inputs and result both move) and denom =
+    design C (inputs move, result pinned), the leading eigenvectors are
+    directions that respond to the result and not to the inputs. This replaces
+    the (A cap B) minus C subtraction, which needs a matched k, a cosine
+    tolerance and a residual-norm threshold, and which degrades exactly in the
+    partial-overlap regime this model turns out to occupy.
+
+    Returns (eigenvalues descending, eigenvectors as columns, unit-norm).
+    An eigenvalue near 1 means the direction is equally driven by both designs,
+    so it is shared rather than result-specific.
+    """
+    Sa = within_config_covariance(acts_numer, shrinkage)
+    Sc = within_config_covariance(acts_denom, shrinkage)
+    L = torch.linalg.cholesky(Sc)
+    Linv = torch.linalg.solve_triangular(L, torch.eye(L.shape[0], dtype=L.dtype),
+                                         upper=False)
+    M = Linv @ Sa @ Linv.T
+    M = 0.5 * (M + M.T)
+    evals, U = torch.linalg.eigh(M)
+    V = Linv.T @ U
+    V = V / V.norm(dim=0, keepdim=True)
+    order = torch.argsort(evals, descending=True)
+    return evals[order], V[:, order]
+
+
+def n_result_directions(evals, min_ratio=2.0):
+    """How many directions are result-specific, read off the spectral gap.
+
+    Theory fixes the reference point: a direction driven equally by both designs
+    has ratio exactly 1, which is what the zero-noise synthetic reproduces
+    (eigenvalues 15985, 15985, 1.0, 1.0, ...). So result-specific directions are
+    those standing clear of 1, and the boundary is the largest multiplicative
+    drop in the spectrum rather than a fixed cut.
+
+    A fixed cut was tried first and failed: at realistic noise the non-result
+    directions sit near 2.4, so a cut of 2.0 counted them. The gap between the
+    real boundary and its neighbour was a factor of ~540 in the same run, so the
+    gap is a far more stable read than any threshold.
+
+    `min_ratio` only screens which directions are eligible to be enriched at all.
+    When nothing clears it -- the case where the result is encoded in the inputs'
+    own directions -- this returns 0, which is the correct answer rather than a
+    failure.
+    """
+    ev = evals[evals > min_ratio]
+    if ev.numel() == 0 or ev.numel() == evals.numel():
+        return 0 if ev.numel() == 0 else int(ev.numel())
+    logs = torch.log(torch.cat([ev, evals[evals <= min_ratio][:1]]))
+    drops = logs[:-1] - logs[1:]
+    best = int(torch.argmax(drops).item())
+    # The gap must be a decade. Measured on known-answer synthetics: a genuine
+    # boundary showed a factor of ~600, while the case with no separate result
+    # representation showed 1.09 with the spectrum flat at ~2.5. A decade sits
+    # roughly two orders of magnitude clear of both, so it separates them without
+    # being tuned to either.
+    if drops[best] < math.log(MIN_GAP_FACTOR):
+        return 0
+    return best + 1
