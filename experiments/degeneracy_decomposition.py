@@ -312,13 +312,16 @@ def ff_svd_subspace(model, k):
     return Q
 
 
-def train_das(model, train_data, hook_name, device, k=1, n_steps=300, init="pca"):
+def train_das(model, train_data, hook_name, device, k=1, n_steps=300, init="random"):
     d_model = train_data[0]["base_act"].shape[0]
 
     if init == "random":
-        # Independent starting point: without this, every fit on a given model
-        # begins from the same deterministic PCA solution and clusters trivially.
-        A = nn.Parameter(torch.randn(d_model, k, device=device))
+        # Random orthogonal start, matching the reference implementation. Without
+        # it, every fit on a given model begins from the same deterministic PCA
+        # solution and clusters trivially, so the A_random condition would be void.
+        A0 = torch.empty(d_model, k, device=device)
+        nn.init.orthogonal_(A0)
+        A = nn.Parameter(A0)
     else:
         deltas = torch.stack([d["source_act"] - d["base_act"] for d in train_data])
         _, _, Vh = torch.linalg.svd(deltas, full_matrices=False)
@@ -1085,7 +1088,8 @@ def decompose(n_models: int = 6, n_fits: int = 10, k: int = 2, op: str = "multip
         m, ds_, lb, ti, _ = b
         prs, _ = generate_grok_pairs(m, ds_, lb, ti, device)
         torch.manual_seed(0)
-        proj = train_das(m, prs[:int(0.7 * len(prs))], hook, device, k=k, n_steps=300)
+        proj = train_das(m, prs[:int(0.7 * len(prs))], hook, device, k=k,
+                         n_steps=300, init="random")
         QsB.append(torch.linalg.qr(proj)[0])
     out["B_across_models"] = pairwise(QsB)
     out["SVD_across_models"] = pairwise(svd_Qs)
