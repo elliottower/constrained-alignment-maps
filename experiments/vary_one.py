@@ -258,3 +258,25 @@ def n_result_directions(evals, min_ratio=2.0):
     if drops[best] < math.log(MIN_GAP_FACTOR):
         return 0
     return best + 1
+
+
+def result_directions(evals, V, cov_numer, ratio_cut=2.0):
+    """Result-specific directions by variance ratio AND variance share (v3 rule).
+
+    A ratio is scale-free, so a direction carrying a negligible share of the
+    numerator design's variance can have a large ratio and mean nothing. On the
+    grokked model 114 of 128 directions cleared the random-network null while
+    carrying a flat 0.00017 of the variance each.
+
+    Two criteria, neither tuned:
+      ratio > ratio_cut, against a random-network null measured at 1.0 (max
+        0.9895 over five seeds);
+      variance share > 1/d, the uniform value.
+
+    Returns (indices, shares). See PREREGISTRATION_VARY_ONE_GROKKING_V3.md.
+    """
+    d = V.shape[0]
+    share = torch.stack([(v @ cov_numer @ v) / (v @ v) for v in V.T])
+    share = share / share.sum()
+    keep = (evals > ratio_cut) & (share > 1.0 / d)
+    return torch.nonzero(keep, as_tuple=True)[0], share
