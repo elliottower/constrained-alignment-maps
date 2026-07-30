@@ -417,6 +417,16 @@ def run_nldas(train_data, eval_data, model, hook_name, device, k, n_steps=200,
     prob_diffs = []
     logit_diffs = []
 
+    # Round-trip error of the featuriser. The intervention decodes through
+    # g(f(.)), so if g and f are not approximate inverses the swap is corrupted
+    # regardless of how good the subspace is. Relative MSE so it is comparable
+    # across methods and scales.
+    with torch.inference_mode():
+        _h = torch.stack([d["base_act"] for d in eval_data])
+        _rt = torch.stack([inv_featurizer(featurizer(d["base_act"])) for d in eval_data])
+        recon_mse = float(((_rt - _h) ** 2).mean())
+        recon_rel = float(((_rt - _h) ** 2).sum() / (_h ** 2).sum())
+
     with torch.inference_mode():
         for d in eval_data:
             feat_b = featurizer(d["base_act"])
@@ -450,6 +460,8 @@ def run_nldas(train_data, eval_data, model, hook_name, device, k, n_steps=200,
 
     return {
         "method": "nldas",
+        "recon_mse": recon_mse,
+        "recon_rel": recon_rel,
         "iia": correct / total if total else 0.0,
         "n_eval": total,
         "mean_prob_diff": sum(prob_diffs) / len(prob_diffs) if prob_diffs else None,
@@ -650,7 +662,16 @@ def eval_vae_iia(vae, model, eval_data, hook_name, device):
     intervened_acts = torch.stack(intervened_acts_list)
     div_ratio = compute_diversity_ratio(intervened_acts, natural_acts)
 
+    # Same round-trip measurement as NL-DAS, so the two are comparable.
+    with torch.inference_mode():
+        _h = torch.stack([d["base_act"] for d in eval_data])
+        _xr = vae(_h)[0]
+        vae_recon_mse = float(((_xr - _h) ** 2).mean())
+        vae_recon_rel = float(((_xr - _h) ** 2).sum() / (_h ** 2).sum())
+
     return {
+        "recon_mse": vae_recon_mse,
+        "recon_rel": vae_recon_rel,
         "iia": correct / total if total else 0.0,
         "n_eval": total,
         "mean_prob_diff": sum(prob_diffs) / len(prob_diffs) if prob_diffs else None,
@@ -769,6 +790,15 @@ def run_comparison(model, pairs, all_acts, labels_for_vae, d_model, n_classes,
     _log_result("nldas", r)
 
     # 3b. NL-DAS + reconstruction penalty
+    # Is lambda_recon = 0.1 simply mistuned? Sweep it rather than assume.
+    for lam in (0.01, 1.0, 10.0):
+        log_msg(f"  Running NL-DAS+recon lambda={lam} ({nldas_steps} steps)...")
+        r = run_nldas(train_data, eval_data, model, hook_name, device, k,
+                      n_steps=nldas_steps, recon_weight=lam, recon_acts=all_acts)
+        r["method"] = f"nldas_recon_lam{lam:g}"
+        results["methods"][f"nldas_recon_lam{lam:g}"] = r
+        _log_result(f"nldas_recon_lam{lam:g}", r)
+
     log_msg(f"  Running NL-DAS+recon ({nldas_steps} steps)...")
     r = run_nldas(train_data, eval_data, model, hook_name, device, k,
                   n_steps=nldas_steps, recon_weight=1.0, recon_acts=all_acts)

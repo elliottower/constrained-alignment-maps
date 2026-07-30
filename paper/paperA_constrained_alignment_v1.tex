@@ -1,0 +1,247 @@
+\pdfoutput=1
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{lineno}
+\usepackage[numbers,sort&compress]{natbib}
+
+\newcommand{\IIA}{\mathrm{IIA}}
+\newcommand{\KL}{D_\mathrm{KL}}
+\newcommand{\zc}{z_{\text{causal}}}
+\newcommand{\zn}{z_{\text{nuisance}}}
+\newcommand{\TODO}[1]{\textcolor{red}{[#1]}}
+\renewcommand{\arraystretch}{1.15}
+
+\title{Unconstrained Nonlinear Alignment Trades Reconstruction for Interchange
+Accuracy; a Constrained Map Does Not}
+
+\author{Anonymous}
+\date{}
+
+\begin{document}
+\linenumbers
+\maketitle
+
+\begin{abstract}
+\citet{sutter2025nonlinear} showed that causal abstraction becomes uninformative
+once alignment maps may be arbitrarily nonlinear, reaching 100\% interchange
+intervention accuracy (IIA) on randomly initialised language models. We ask what
+a \emph{constrained} nonlinear map does under the same tests, which they do not
+examine. On six GPT-2 tasks at $k = 1$, linear Distributed Alignment Search
+attains strict IIA between $0.00$ and $0.52$ while a label-conditional structured
+variational autoencoder attains $\geq 0.90$ on five of six. The two separate more
+sharply under three further tests. On a randomly initialised network, the
+unconstrained map reaches $\IIA = 0.989$ and the constrained map $0.000$. Under
+held-out entities, where the causal variable is token-specific and interchange
+should fail, the unconstrained map still reports $1.000$ while the constrained map
+reports $0.001$; under held-out templates, where transfer is warranted, it
+recovers $0.993$. Measuring round-trip reconstruction explains why: the
+unconstrained map loses 50--73\% of the signal decoding its own features, and
+penalising that loss reduces its accuracy monotonically across three orders of
+magnitude of penalty weight. It obtains accuracy \emph{by means of} unfaithful
+reconstruction. The constrained map reconstructs to $0.07\%$ relative error and
+attains $\IIA = 1.000$ simultaneously. We also report that our own faithfulness
+diagnostic fails: a diversity ratio detects the collapse failure mode on
+pretrained models but reads a converged vacuous map as faithful.
+\end{abstract}
+
+\section{Introduction}
+
+Causal abstraction asks whether interventions on a model's internal
+representation behave like interventions on a high-level algorithmic variable
+\citep{geiger2021causal}. Distributed Alignment Search (DAS) operationalises this
+by learning an orthogonal rotation identifying a $k$-dimensional subspace,
+swapping the in-subspace component between two inputs, and measuring whether the
+model produces the counterfactual output \citep{geiger2023finding}.
+
+\citet{sutter2025nonlinear} showed the framework collapses when the alignment map
+is unconstrained: sufficiently expressive maps align any network to any
+algorithm, and their maps reach 100\% IIA on randomly initialised language
+models. That result is both a theorem and an experiment, and the experiment is the
+sharper half.
+
+Two facts motivate looking between those extremes. Removing the linearity
+constraint makes the framework vacuous. Keeping it leaves linear DAS at strict
+IIA $0.00$ on subject--verb agreement in GPT-2, where it shifts probability toward
+the counterfactual token without ever making it the argmax. Neither option is
+satisfactory, and the question is what constraints short of linearity suffice.
+
+We test a label-conditional structured variational autoencoder: a
+label-conditional prior over a supervised causal latent
+\citep{khemakhem2020variational}, an unsupervised nuisance latent
+\citep{narayanaswamy2017learning}, and an overcomplete causal block, trained with
+an interchange term added to the ELBO rather than substituted for it.
+\TODO{Confirm this framing is what the final method section says.}
+
+\paragraph{Attribution.} The random-network test is
+\citeauthor{sutter2025nonlinear}'s. Measuring IIA on a network with no causal
+structure is their contribution, and their result is what establishes that high
+accuracy there is uninformative. Our addition is applying it to a constrained map.
+The diversity ratio is ours, and its failure is reported as ours.
+
+\section{Results}
+
+\subsection{Six GPT-2 tasks}
+
+\TODO{Table: DAS vs structured VAE, standard and strict IIA at $k=1$, layer 8.
+IOI $0.19/0.19$ vs $1.00/1.00$; gender bias $0.62/0.52$ vs $1.00/1.00$;
+greater-than $0.93/0.28$ vs $1.00/1.00$; SVA $0.92/0.00$ vs $1.00/1.00$;
+hypernymy $0.07/0.02$ vs $0.97/0.90$; capitals $0.12/0.00$ vs $0.51/0.26$.
+SINGLE RUN --- needs seeds before this is the headline table.}
+
+The gap between scoring rules is a result in itself. On subject--verb agreement
+DAS scores $0.92$ when the counterfactual answer need only outrank the base
+answer and $0.00$ when it must be the argmax over the vocabulary. Reporting the
+permissive figure alone would describe a method that never produces the
+counterfactual token as $92\%$ accurate.
+
+\subsection{Subspace dimension under hard interchange accuracy}
+
+Standard IIA includes pairs where the intervention cannot change the prediction.
+Restricting to hard examples (Methods) and sweeping $k$ with five-fold
+cross-validation over 1994 IOI pairs:
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lccc}
+\toprule
+$k$ & DAS & Structured VAE & NL-DAS \\
+\midrule
+1  & $0.156 \pm 0.360$ & $0.234 \pm 0.424$ & $1.000 \pm 0.000$ \\
+2  & $0.273 \pm 0.444$ & $0.696 \pm 0.458$ & $1.000 \pm 0.000$ \\
+4  & $0.544 \pm 0.498$ & $\mathbf{0.978 \pm 0.144}$ & $1.000 \pm 0.000$ \\
+8  & $0.859 \pm 0.345$ & $0.967 \pm 0.177$ & $1.000 \pm 0.000$ \\
+16 & $\mathbf{0.994 \pm 0.074}$ & $0.962 \pm 0.187$ & $1.000 \pm 0.000$ \\
+32 & $0.998 \pm 0.030$ & $0.954 \pm 0.205$ & $1.000 \pm 0.000$ \\
+\bottomrule
+\end{tabular}
+\caption{Hard IIA on IOI, mean and standard deviation over five folds. The
+structured VAE dominates to $k = 8$; DAS becomes reliable at $k = 16$ and
+slightly exceeds it thereafter. NL-DAS reads $1.000$ at every $k$ and every fold,
+which \S\ref{sec:random} shows is uninformative.}
+\end{table}
+
+The claim is efficiency, not capability: the causal variable is reachable in
+about four nonlinear dimensions or about sixteen linear ones. Intervals at low
+$k$ are wide because the per-example outcome is near-binary, and the $k=1$ and
+$k=2$ comparisons are not separable.
+
+\subsection{Distribution shift}
+
+\TODO{Table: standard / held-out entities / held-out templates on IOI at $k=1$.
+NL-DAS $1.000/1.000/0.537$ at $\rho = 0.05$ throughout; structured VAE
+$1.000/0.001/0.993$. SINGLE RUN --- needs seeds.}
+
+Held-out entities is a split where failure is the correct outcome, because the
+IOI causal variable is token-specific and has no well-defined target across
+disjoint entity sets. The unconstrained map transfers perfectly there, for a
+damning reason: a map indexed by label never encoded entity identity. Held-out
+templates is a split where transfer is warranted, and the ordering reverses.
+
+\subsection{A randomly initialised network}
+\label{sec:random}
+
+\TODO{Table: NL-DAS $0.989$, structured VAE $0.000$, five runs across three seeds
+and two optimisation budgets. Pre-registered with a withdrawal rule.}
+
+This is the test from \citet{sutter2025nonlinear}. A random network contains no
+causal structure, so accuracy above chance is not evidence about the network. The
+decision rule was fixed before the run: had the constrained map exceeded $0.30$,
+the corresponding claim would have been withdrawn.
+
+\subsection{Reconstruction and interchange accuracy}
+
+Round-trip relative error, $\lVert g(f(h)) - h \rVert^2 / \lVert h \rVert^2$,
+measured identically for both maps:
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lccc}
+\toprule
+& $k{=}2$ & $k{=}8$ & $k{=}32$ \\
+\midrule
+NL-DAS         & 0.726 & 0.562 & 0.497 \\
+Structured VAE & 0.0022 & 0.0009 & 0.0007 \\
+\bottomrule
+\end{tabular}
+\hspace{1em}
+\begin{tabular}{lccc}
+\toprule
+$\lambda_\text{recon}$ & $k{=}2$ & $k{=}8$ & $k{=}32$ \\
+\midrule
+0     & 0.454 & 0.883 & 0.963 \\
+0.01  & 0.343 & 0.874 & 0.972 \\
+0.1   & 0.109 & 0.635 & 0.702 \\
+1     & 0.128 & 0.630 & 0.698 \\
+10    & 0.076 & 0.570 & 0.631 \\
+\bottomrule
+\end{tabular}
+\caption{Left: round-trip relative reconstruction error, three seeds. Right:
+NL-DAS interchange accuracy as a function of reconstruction penalty weight.
+Penalising reconstruction error reduces accuracy monotonically over three orders
+of magnitude.}
+\end{table}
+
+The unconstrained map loses between a half and three quarters of the signal
+decoding its own features, and forcing it to reconstruct reduces its accuracy at
+every penalty weight tested. It therefore obtains accuracy \emph{by means of}
+unfaithful reconstruction rather than in spite of it: the interchange succeeds
+because the decoder emits activations the model never produces, and closing that
+route leaves it with no faithful mechanism. The constrained map reconstructs to
+$0.07\%$ relative error and reaches $\IIA = 1.000$ at the same time, so the trade
+is not intrinsic to nonlinear alignment.
+
+\subsection{Our faithfulness diagnostic fails}
+
+\TODO{Report: diversity ratio $\rho$ detects collapse on pretrained models
+(NL-DAS $\IIA = 1.000$ at $\rho = 0.055$) but reads a converged vacuous map as
+faithful ($\rho_\text{within} = 1.068$ at $\IIA = 0.989$ on a random network).
+$\rho$ is demoted to a secondary signal. This is why the random-network control is
+load-bearing rather than redundant.}
+
+\subsection{Controls}
+
+\TODO{Four ablations against per-task random-subspace floors, which range from
+$0.000$ to $0.482$ depending on class count. Every control sits at its floor.}
+
+\section{Discussion}
+
+\TODO{Draft after the tables are final. Must cover: what the constraints buy;
+that the failure of our own metric motivates the borrowed control; the
+implication that faithfulness and accuracy should be reported together.}
+
+\paragraph{On reporting protocol.}
+The DAS paper describes running multiple random initialisations and selecting the
+best. A maximum over restarts is an upper order statistic whose expectation grows
+with the number of restarts; it is not what a single run yields and is not
+comparable across studies using different counts. We report the mean with a
+confidence interval as the primary figure and the maximum over seeds alongside it,
+for every method, so results can be read under either protocol.
+\TODO{Insert the measured inflation: DAS mean $0.919$ against max $0.967$ at
+$k=16$ on modular addition.}
+
+\paragraph{Limitations.}
+\TODO{Single-run tables above. The mechanism behind $\rho \gg 1$ is unexplained,
+including NL-DAS with reconstruction reaching $\rho_\text{within} = 2.249$ on a
+pretrained model. The efficiency claim is measured on one model family.}
+
+\section{Methods}
+
+\TODO{Interchange interventions and the two scoring rules. Hard-example
+selection. Alignment methods, including that DAS uses random orthogonal
+initialisation matching the reference implementation and that the QR
+parametrisation used here differs from an explicit orthogonal parametrisation
+without affecting the recovered solution. The structured VAE objective. The
+diversity ratio. Tasks and controls.}
+
+\section*{Data and Code Availability}
+\TODO{Repository and archive.}
+
+\bibliographystyle{plainnat}
+\bibliography{references,new_bib_entries}
+\end{document}
