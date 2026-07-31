@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import random
+import sys
 import time
 from datetime import datetime, timezone
 
@@ -40,6 +41,16 @@ try:
 except (ImportError, AttributeError):
     pass
 
+# The canonical DAS module. "/root" is where it lands inside the Modal image;
+# the directory of this file is where it lives in the repo.
+for _p in ("/root", os.path.dirname(os.path.abspath(__file__))):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+try:
+    import das
+except (ImportError, AttributeError):
+    das = None
+
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install("torch==2.5.1", "numpy==1.26.4", "setuptools<71")
@@ -47,6 +58,14 @@ image = (
         "transformer-lens==2.11.0", "transformers==4.46.3",
         "einops>=0.8", "matplotlib", "tqdm",
     )
+    # pyvene supplies LowRankRotateLayer, which MIB's SubspaceFeaturizer wraps.
+    .pip_install("pyvene==0.1.8")
+    # MIB's causal-variable track, imported by experiments/das.py at /mib_track.
+    .add_local_dir(
+        "./reference/MIB/MIB-causal-variable-track",
+        remote_path="/mib_track",
+    )
+    .add_local_file("experiments/das.py", remote_path="/root/das.py")
 )
 
 app = modal.App("random-network-control", image=image)
@@ -392,6 +411,75 @@ def run_das(train_data, eval_data, model, hook_name, device, k, n_steps=300):
 
 
 # ===================================================================
+# DAS matching the MIB / pyvene reference implementation
+#
+# NOTE ON WHAT train_das ABOVE ACTUALLY IS. It warm-starts from the top-k right
+# singular vectors of the intervention deltas, which multiseed_ksweep.py
+# describes as "a different (warm-started) method and is not standard DAS" and
+# which the manuscript reports separately as the delta-PCA variant. The arm below
+# is standard DAS: random orthogonal initialisation kept on the Stiefel manifold
+# by torch.nn.utils.parametrizations.orthogonal, matching pyvene's
+# LowRankRotateLayer(init_orth=True) as used by MIB.
+#
+# Both are fitted in the same run so the discrepancy is measured under identical
+# data and seeds (Experiment 0 of PREREGISTRATION_RECONSTRUCTION_CRITERION.md).
+# ===================================================================
+
+def train_das_reference(model, train_data, hook_name, device, k=1, n_steps=None,
+                        lr=None, task=None):
+    """Standard DAS, run with MIB's own code and MIB's hyperparameters.
+
+    Delegates to experiments/das.py, whose standard arm is MIB's
+    CausalAbstraction.neural.featurizers.SubspaceFeaturizer wrapping pyvene's
+    LowRankRotateLayer. Budget is MIB's 3 epochs at batch 32 with AdamW at
+    lr=1e-2, rather than this file's historical 300 steps at lr=1e-3.
+
+    Returns the projector, matching train_das above.
+    """
+    if das is None:
+        raise ImportError(
+            "experiments/das.py did not import; the reference DAS arm needs it "
+            "along with pyvene and the vendored MIB checkout.")
+    keys = dict(key_base_act="base_act", key_src_act="source_act",
+                key_base_toks="base_toks", key_target="src_id")
+    if n_steps is None:
+        Q = das.train_das_mib(model, train_data, hook_name, device, k=k,
+                              task=task, **keys)
+    else:
+        Q = das.train_das(model, train_data, hook_name, device, k=k,
+                          n_steps=n_steps, lr=lr or das.MIB_CONFIG["lr"], **keys)
+    return (Q @ Q.T).detach()
+
+
+def run_das_reference(train_data, eval_data, model, hook_name, device, k,
+                      n_steps=None, task=None):
+    """n_steps=None uses MIB's per-task epoch budget, not a fixed step count."""
+    proj = train_das_reference(model, train_data, hook_name, device, k=k,
+                               n_steps=n_steps, task=task)
+    return _eval_linear(model, eval_data, proj, hook_name, device, "das_reference")
+
+
+# Student's t 95% critical values, keyed by sample count. Same table as
+# experiments/aggregate_seeds.py so intervals are computed identically.
+T95 = {2: 12.706, 3: 4.303, 4: 3.182, 5: 2.776, 6: 2.571, 7: 2.447, 8: 2.365,
+       9: 2.306, 10: 2.262}
+
+# Independent random subspaces drawn per task to estimate the noise floor.
+FLOOR_DRAWS = 5
+
+
+def mean_ci95(xs):
+    """Mean and 95% Student-t half-width. Half-width is 0.0 for a single value."""
+    n = len(xs)
+    m = sum(xs) / n
+    if n < 2:
+        return m, 0.0
+    var = sum((x - m) ** 2 for x in xs) / (n - 1)
+    se = (var / n) ** 0.5
+    return m, T95.get(n, 1.96) * se
+
+
+# ===================================================================
 # Method 3: Nonlinear DAS
 # ===================================================================
 
@@ -663,6 +751,70 @@ def train_vae_family(vae, acts, labels, device, n_epochs=300, batch_size=128,
     return vae
 
 
+def train_pi_sae_e2e(vae, acts, labels, train_pairs, model, hook_name, device,
+                     n_epochs=500, batch_size=256, lr=1e-3, alpha=10.0,
+                     l1_coeff=1e-3, beta=1.0, interv_batch=8):
+    """Structured pi-SAE with an end-to-end intervention cross-entropy term.
+
+    Ported verbatim from k1_vae_vs_das.py::train_pi_sae_e2e, with this file's key
+    names (`source_act`, `src_id` rather than `src_act`, `src_label`). Two
+    phases: reconstruction-only warmup, then the intervention term is added to
+    the ELBO rather than substituted for it, so the generative terms stay active.
+
+    The intervention is additive, h' = h_base + dec(z_swap) - dec(z_orig), which
+    cancels reconstruction error to first order.
+    """
+    optimizer = torch.optim.Adam(vae.parameters(), lr=lr)
+    n = len(acts)
+    warmup_epochs = min(200, n_epochs // 3)
+    for epoch in tqdm(range(n_epochs), desc="pi-SAE-e2e", leave=False):
+        perm = torch.randperm(n, device=device)
+        for i in range(0, n, batch_size):
+            idx = perm[i:i + batch_size]
+            x, y = acts[idx], labels[idx]
+            x_r, logits, mu_c, lv_c, mu_n, lv_n = vae(x)
+            recon = F.mse_loss(x_r, x)
+            prior_mu = vae.prior_mu(y)
+            prior_lv = vae.prior_logvar(y)
+            kl_c = -0.5 * (1 + lv_c - prior_lv
+                           - ((mu_c - prior_mu).pow(2) + lv_c.exp()) / prior_lv.exp()).mean()
+            kl_n = -0.5 * (1 + lv_n - mu_n.pow(2) - lv_n.exp()).mean()
+            ce = F.cross_entropy(logits, y)
+            sparsity = mu_c.abs().mean()
+            loss = recon + kl_c + kl_n + alpha * ce + l1_coeff * sparsity
+
+            if epoch >= warmup_epochs and train_pairs:
+                batch_pairs = random.sample(train_pairs, min(interv_batch, len(train_pairs)))
+                interv_loss = torch.tensor(0.0, device=device)
+                for d in batch_pairs:
+                    base_act = d["base_act"].unsqueeze(0)
+                    src_act = d["source_act"].unsqueeze(0)
+                    mu_c_b, _, mu_n_b, _ = vae.encode(base_act)
+                    mu_c_s, _, _, _ = vae.encode(src_act)
+                    z_base = torch.cat([mu_c_b, mu_n_b], dim=-1)
+                    z_iv = torch.cat([mu_c_s, mu_n_b], dim=-1)
+                    h_recon = vae.decoder(z_base)
+                    h_iv = vae.decoder(z_iv)
+                    delta = (h_iv - h_recon).squeeze(0)
+
+                    def hook_fn(act, hook=None, _d=delta):
+                        new = act.clone()
+                        new[0, -1, :] = new[0, -1, :] + _d
+                        return new
+
+                    iv_logits = model.run_with_hooks(
+                        d["base_toks"], fwd_hooks=[(hook_name, hook_fn)]
+                    )[0, -1, :]
+                    interv_loss = interv_loss - F.log_softmax(iv_logits, dim=-1)[d["src_id"]]
+                loss = loss + beta * (interv_loss / len(batch_pairs))
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+    vae.eval()
+    return vae
+
+
 def eval_vae_iia(vae, model, eval_data, hook_name, device):
     correct = 0
     total = 0
@@ -782,7 +934,8 @@ def _eval_linear(model, eval_data, proj, hook_name, device, method_name):
 # ===================================================================
 
 def run_comparison(model, pairs, all_acts, labels_for_vae, d_model, n_classes,
-                   hook_name, device, k=1, vae_epochs=300, das_steps=300, nldas_steps=200):
+                   hook_name, device, k=1, vae_epochs=300, das_steps=300,
+                   nldas_steps=200, task=None):
     if not pairs:
         log_msg("  No pairs — skipping all methods")
         return {"methods": {}, "skipped": True}
@@ -798,13 +951,29 @@ def run_comparison(model, pairs, all_acts, labels_for_vae, d_model, n_classes,
 
     results = {"methods": {}}
 
-    # Random baseline
-    random_U = torch.randn(d_model, k, device=device)
-    random_U, _ = torch.linalg.qr(random_U)
-    random_proj = random_U @ random_U.T
-    r = _eval_linear(model, eval_data, random_proj, hook_name, device, "random")
+    # Random baseline (noise floor), estimated with an interval.
+    # Every vacuity threshold in PREREGISTRATION_RECONSTRUCTION_CRITERION.md is
+    # defined as an excess over this floor's UPPER bound, so a single draw is not
+    # enough: it gives a point estimate with no sampling spread behind it.
+    floor_draws = []
+    for _ in range(FLOOR_DRAWS):
+        random_U, _ = torch.linalg.qr(torch.randn(d_model, k, device=device))
+        rd = _eval_linear(model, eval_data, random_U @ random_U.T, hook_name,
+                          device, "random")
+        if rd["iia"] is not None:
+            floor_draws.append(rd["iia"])
+    floor_mean, floor_hw = mean_ci95(floor_draws) if floor_draws else (None, None)
+    r = dict(rd)
+    r["iia"] = floor_mean
+    r["iia_ci95_halfwidth"] = floor_hw
+    r["iia_upper"] = None if floor_mean is None else floor_mean + floor_hw
+    r["iia_draws"] = floor_draws
+    r["n_draws"] = len(floor_draws)
     results["methods"]["random"] = r
     _log_result("random", r)
+    if floor_mean is not None:
+        log_msg(f"    floor over {len(floor_draws)} draws: {floor_mean:.4f} "
+                f"+/-{floor_hw:.4f} (upper={floor_mean + floor_hw:.4f})")
 
     # 1. Delta-PCA
     log_msg("  Running delta-PCA...")
@@ -812,11 +981,26 @@ def run_comparison(model, pairs, all_acts, labels_for_vae, d_model, n_classes,
     results["methods"]["delta_pca"] = r
     _log_result("delta_pca", r)
 
-    # 2. DAS
-    log_msg(f"  Running DAS ({das_steps} steps)...")
+    # 2. DAS (delta-PCA warm start -- see the note above train_das_reference;
+    #    this is the warm-started variant, not standard DAS)
+    log_msg(f"  Running DAS/delta-PCA-init ({das_steps} steps)...")
     r = run_das(train_data, eval_data, model, hook_name, device, k, n_steps=das_steps)
+    r["init"] = "delta_pca_warm_start"
     results["methods"]["das"] = r
     _log_result("das", r)
+
+    # 2b. DAS under the reference implementation (random orthogonal init,
+    #     orthogonal parametrisation), same run and same data as 2.
+    log_msg(f"  Running DAS/reference ({das_steps} steps)...")
+    r_ref = run_das_reference(train_data, eval_data, model, hook_name, device, k,
+                              task=task)
+    results["das_reference_config"] = das.mib_config(task) if das is not None else {}
+    r_ref["init"] = "random_orthogonal"
+    results["methods"]["das_reference"] = r_ref
+    _log_result("das_reference", r_ref)
+    if r_ref["iia"] is not None and r["iia"] is not None:
+        results["das_init_delta"] = r_ref["iia"] - r["iia"]
+        log_msg(f"    delta vs delta-PCA-init DAS: {r_ref['iia'] - r['iia']:+.4f}")
 
     # 3. NL-DAS
     log_msg(f"  Running NL-DAS ({nldas_steps} steps)...")
@@ -866,6 +1050,27 @@ def run_comparison(model, pairs, all_acts, labels_for_vae, d_model, n_classes,
     results["methods"]["pi_sae"] = r
     _log_result("pi_sae", r)
     del ps
+
+    # 7. pi-SAE with end-to-end intervention training.
+    #
+    # This is the arm that produces every headline number in the manuscript's
+    # six-task table, and until now it was absent from this control: no script
+    # in the repository contained both `e2e` and `random_init`. The control
+    # therefore tested a different method from the one the paper reports.
+    #
+    # It matters most here because the end-to-end objective is the same one
+    # unconstrained nonlinear DAS optimises. The paper's argument is that
+    # constraints rather than objectives separate the two, and that argument is
+    # untested precisely where it carries weight.
+    log_msg(f"  Running pi-SAE-e2e ({vae_epochs} epochs)...")
+    pse = _build_pi_sae(d_model, z_causal, z_nuisance, hidden, n_classes, device)
+    train_pi_sae_e2e(pse, all_acts, labels_for_vae, train_data, model, hook_name,
+                     device, n_epochs=vae_epochs)
+    r = eval_vae_iia(pse, model, eval_data, hook_name, device)
+    r["method"] = "pi_sae_e2e"
+    results["methods"]["pi_sae_e2e"] = r
+    _log_result("pi_sae_e2e", r)
+    del pse
 
     torch.cuda.empty_cache()
     return results
@@ -924,7 +1129,8 @@ def run_grokking_task(operation, device, k=1):
 
     results = run_comparison(
         model, pairs, act_t, lab_t, d_model, n_classes,
-        hook_name, device, k=k, vae_epochs=500, das_steps=300, nldas_steps=nldas_steps,
+        hook_name, device, k=k, vae_epochs=500, das_steps=300,
+        nldas_steps=nldas_steps, task=operation,
     )
     results["task"] = operation
     results["grokked"] = grokked
@@ -989,7 +1195,8 @@ def run_ioi_task(device, k=1, random_init=False, nldas_steps=200, map_seed=0):
 
     results = run_comparison(
         model, pairs, act_t, lab_t, d_model, n_classes,
-        hook_name, device, k=k, vae_epochs=500, das_steps=300, nldas_steps=nldas_steps,
+        hook_name, device, k=k, vae_epochs=500, das_steps=300,
+        nldas_steps=nldas_steps, task="ioi",
     )
     results["task"] = "ioi"
     results["k"] = k
@@ -1051,7 +1258,8 @@ def main(tasks: list[str] = None, k: int = 1, random_init: bool = False, nldas_s
     log_msg(f"{'='*80}")
     for task, r in all_results.items():
         methods_str = []
-        for m in ["delta_pca", "das", "nldas", "nldas_recon", "structured_vae", "pi_vae", "pi_sae"]:
+        for m in ["delta_pca", "das", "das_reference", "nldas", "nldas_recon",
+                  "structured_vae", "pi_vae", "pi_sae", "pi_sae_e2e"]:
             v = r.get("methods", {}).get(m, {})
             iia = f"{v['iia']:.2f}" if v.get("iia") is not None else "N/A"
             pd = f"{v['mean_prob_diff']:.2f}" if v.get("mean_prob_diff") is not None else "?"

@@ -31,6 +31,7 @@ import json
 import logging
 import os
 import random
+import sys
 import time
 import traceback
 from datetime import datetime, timezone
@@ -46,6 +47,16 @@ try:
     from transformer_lens import HookedTransformer, HookedTransformerConfig
 except (ImportError, AttributeError):
     pass
+
+# The canonical DAS module. "/root" is where it lands inside the Modal image;
+# the directory of this file is where it lives in the repo.
+for _p in ("/root", os.path.dirname(os.path.abspath(__file__))):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+try:
+    import das
+except (ImportError, AttributeError):
+    das = None
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -63,10 +74,18 @@ image = (
         "pandas",
         "scipy",
     )
+    # pyvene supplies LowRankRotateLayer, which MIB's SubspaceFeaturizer wraps.
+    .pip_install("pyvene==0.1.8")
     .add_local_dir(
         "./data/mib",
         remote_path="/mib_data",
     )
+    # MIB's causal-variable track, imported by experiments/das.py at /mib_track.
+    .add_local_dir(
+        "./reference/MIB/MIB-causal-variable-track",
+        remote_path="/mib_track",
+    )
+    .add_local_file("experiments/das.py", remote_path="/root/das.py")
 )
 
 app = modal.App("k1-vae-vs-das-pi-ablations", image=image)
@@ -779,6 +798,69 @@ def train_das(model_lm, pairs, hook_name, d_model, k, device,
     return Q.detach()
 
 
+# ===================================================================
+# DAS matching the MIB / pyvene reference implementation
+#
+# MIB builds its subspace featurizer as
+#     LowRankRotateLayer(d, k, init_orth=True)
+#     -> torch.nn.utils.parametrizations.orthogonal(...)
+# i.e. a random orthogonal initialisation kept on the Stiefel manifold
+# throughout optimisation, rather than the Gaussian initialisation with per-step
+# QR used by train_das above. Both are fitted in the same run so the discrepancy
+# is measured under identical data and seeds (Experiment 0 of
+# PREREGISTRATION_RECONSTRUCTION_CRITERION.md). pyvene is not a dependency here;
+# this reproduces the same construction.
+# ===================================================================
+
+def train_das_reference(model_lm, pairs, hook_name, d_model, k, device,
+                        n_steps=None, lr=None, batch_size=None, task=None):
+    """Standard DAS, run with MIB's own code and MIB's hyperparameters.
+
+    Delegates to experiments/das.py, whose standard arm is MIB's
+    CausalAbstraction.neural.featurizers.SubspaceFeaturizer wrapping pyvene's
+    LowRankRotateLayer. Budget is MIB's 3 epochs at batch 32 with AdamW at
+    lr=1e-2, rather than this file's historical 300 steps at lr=1e-3.
+
+    experiments/test_das_matches_mib.py verifies the equivalence.
+    """
+    if das is None:
+        raise ImportError(
+            "experiments/das.py did not import; the reference DAS arm needs it "
+            "along with pyvene and the vendored MIB checkout.")
+    if n_steps is None:
+        return das.train_das_mib(
+            model_lm, pairs, hook_name, device, k=k, task=task,
+            key_base_act="base_act", key_src_act="src_act",
+            key_base_toks="base_toks", key_target="src_label")
+    return das.train_das(
+        model_lm, pairs, hook_name, device, k=k, n_steps=n_steps,
+        lr=lr or das.MIB_CONFIG["lr"],
+        batch_size=batch_size or das.MIB_CONFIG["batch_size"],
+        key_base_act="base_act", key_src_act="src_act",
+        key_base_toks="base_toks", key_target="src_label")
+
+
+# Student's t 95% critical values, keyed by sample count. Same table as
+# experiments/aggregate_seeds.py so intervals are computed identically.
+T95 = {2: 12.706, 3: 4.303, 4: 3.182, 5: 2.776, 6: 2.571, 7: 2.447, 8: 2.365,
+       9: 2.306, 10: 2.262}
+
+# Independent random subspaces drawn per task to estimate the noise floor.
+# Five matches the fit count fixed for Experiment 0.
+FLOOR_DRAWS = 5
+
+
+def mean_ci95(xs):
+    """Mean and 95% Student-t half-width. Half-width is 0.0 for a single value."""
+    n = len(xs)
+    m = sum(xs) / n
+    if n < 2:
+        return m, 0.0
+    var = sum((x - m) ** 2 for x in xs) / (n - 1)
+    se = (var / n) ** 0.5
+    return m, T95.get(n, 1.96) * se
+
+
 def eval_das_iia(Q, model_lm, pairs, hook_name, device):
     proj = Q @ Q.T
     std_correct = strict_correct = 0
@@ -889,10 +971,13 @@ def eval_nonlinear_das_iia(featurizer, inv_featurizer, Q, model_lm, pairs, hook_
 
 def run_all_variants(model_lm, train_pairs, eval_pairs, act_t, lab_t,
                      n_classes, d_model, k, hook_name, device, log,
-                     hidden_dim=256, vae_epochs=500):
+                     hidden_dim=256, vae_epochs=500, train_idx=None, task=None):
     """Run VAE + all controls + DAS + nonlinear DAS for one k value."""
 
     results = {}
+
+    train_acts = act_t[train_idx] if train_idx is not None else act_t
+    train_labs = lab_t[train_idx] if train_idx is not None else lab_t
 
     # --- Linear DAS ---
     log.info(f"[{utc_ts()}]   DAS k={k}")
@@ -901,6 +986,71 @@ def run_all_variants(model_lm, train_pairs, eval_pairs, act_t, lab_t,
     results["das_iia"] = das_std
     results["das_strict_iia"] = das_strict
     log.info(f"[{utc_ts()}]     IIA={das_std:.4f} (strict={das_strict:.4f})")
+
+    # --- DAS under the reference orthogonal parametrisation, same run ---
+    # Experiment 0: both parametrisations are fitted on the same data under the
+    # same seed so the discrepancy is measured within a run rather than across
+    # commits. The local implementation is removed only after this completes.
+    log.info(f"[{utc_ts()}]   DAS (reference parametrisation) k={k}")
+    # Which configuration this task actually got. MIB has baselines for some
+    # tasks and not others; where it has none the library default is used, and
+    # `is_mib_baseline` records that so results cannot claim MIB's settings for a
+    # task MIB never configured.
+    ref_cfg = das.mib_config(task) if das is not None else {}
+    results["das_reference_config"] = ref_cfg
+    log.info(f"[{utc_ts()}]   DAS reference config for task={task!r}: "
+             f"lr={ref_cfg.get('lr')} epochs={ref_cfg.get('n_epochs')} "
+             f"batch={ref_cfg.get('batch_size')} "
+             f"mib_baseline={ref_cfg.get('is_mib_baseline')}")
+    # The reference arm uses the FULL training split, as MIB does. The 400-pair
+    # cap below is retained only for the historical arm, so its published number
+    # stays reproducible. Capping here would be actively wrong: MIB's budget is
+    # in epochs, and at batch 1024 a 400-pair cap yields two optimiser steps.
+    results["das_reference_n_train"] = len(train_pairs)
+    results["das_local_n_train"] = len(train_pairs[:400])
+    Q_ref = train_das_reference(model_lm, train_pairs, hook_name, d_model,
+                                k, device, task=task)  # MIB's per-task budget
+    das_ref_std, das_ref_strict = eval_das_iia(Q_ref, model_lm, eval_pairs, hook_name, device)
+    results["das_reference_iia"] = das_ref_std
+    results["das_reference_strict_iia"] = das_ref_strict
+    results["das_parametrisation_delta"] = das_ref_std - das_std
+    results["das_parametrisation_delta_strict"] = das_ref_strict - das_strict
+    log.info(f"[{utc_ts()}]     IIA={das_ref_std:.4f} (strict={das_ref_strict:.4f}), "
+             f"delta vs local={das_ref_std - das_std:+.4f} "
+             f"(strict {das_ref_strict - das_strict:+.4f})")
+
+    # --- Step C of Experiment 0: convergence curve on a real task ---
+    # The planted-direction toy converges within fifty steps at MIB's learning
+    # rate; GPT-2 tasks are not assumed to. Snapshots come from ONE trajectory,
+    # so the curve costs a single fit rather than one fit per budget. Step counts
+    # are doublings around MIB's own budget so the pre-registered rule (within
+    # 0.02 of 2x the steps, twice consecutively) has doublings to work with.
+    das_train = train_pairs
+    mib_budget = das.steps_for_epochs(len(das_train), ref_cfg.get("batch_size"),
+                                      ref_cfg.get("n_epochs"))
+    snap_steps = sorted({max(1, mib_budget // 4), max(1, mib_budget // 2),
+                         mib_budget, 2 * mib_budget, 4 * mib_budget})
+    log.info(f"[{utc_ts()}]   DAS convergence curve k={k}: MIB budget "
+             f"{mib_budget} steps ({len(das_train)} pairs, 3 epochs @ batch "
+             f"{das.MIB_CONFIG['batch_size']}); snapshots at {snap_steps}")
+    snaps = das.train_das_snapshots(
+        model_lm, das_train, hook_name, device, k=k, snapshot_steps=snap_steps,
+        key_base_act="base_act", key_src_act="src_act",
+        key_base_toks="base_toks", key_target="src_label")
+    curve = {}
+    for s in sorted(snaps):
+        s_std, s_strict = eval_das_iia(snaps[s], model_lm, eval_pairs, hook_name, device)
+        curve[s] = {"iia": s_std, "strict_iia": s_strict}
+        log.info(f"[{utc_ts()}]     step {s:5d}: IIA={s_std:.4f} strict={s_strict:.4f}"
+                 + ("  <- MIB budget" if s == mib_budget else ""))
+    conv = das.converged_step({s: v["iia"] for s, v in curve.items()})
+    results["das_convergence_curve"] = curve
+    results["das_mib_budget_steps"] = mib_budget
+    results["das_converged_step"] = conv
+    results["das_converged_at_mib_budget"] = (conv is not None and conv <= mib_budget)
+    log.info(f"[{utc_ts()}]     converged at step {conv} "
+             f"(MIB budget {mib_budget}); "
+             f"{'converged within budget' if conv is not None and conv <= mib_budget else 'NOT converged within budget tested'}")
 
     # --- Nonlinear DAS (C6: same encoder capacity, no ELBO) ---
     log.info(f"[{utc_ts()}]   Nonlinear DAS k={k}")
@@ -920,7 +1070,7 @@ def run_all_variants(model_lm, train_pairs, eval_pairs, act_t, lab_t,
     # --- VAE (main) ---
     log.info(f"[{utc_ts()}]   VAE k={k}")
     vae = build_vae(d_model, k, 16, hidden_dim, n_classes, device)
-    vae = train_vae(vae, act_t, lab_t, device, n_epochs=vae_epochs, alpha=10.0)
+    vae = train_vae(vae, train_acts, train_labs, device, n_epochs=vae_epochs, alpha=10.0)
     vae_iia_d, vae_recon = eval_vae_metrics(vae, model_lm, eval_pairs, hook_name, act_t[:200], device)
     with torch.inference_mode():
         mu_c, _, _, _ = vae.encode(act_t[:200])
@@ -934,9 +1084,9 @@ def run_all_variants(model_lm, train_pairs, eval_pairs, act_t, lab_t,
 
     # --- C1: Random labels ---
     log.info(f"[{utc_ts()}]   C1: Random labels k={k}")
-    rand_labels = lab_t[torch.randperm(len(lab_t), device=device)]
+    rand_labels = train_labs[torch.randperm(len(train_labs), device=device)]
     vae_rand = build_vae(d_model, k, 16, hidden_dim, n_classes, device)
-    vae_rand = train_vae(vae_rand, act_t, rand_labels, device, n_epochs=vae_epochs, alpha=10.0)
+    vae_rand = train_vae(vae_rand, train_acts, rand_labels, device, n_epochs=vae_epochs, alpha=10.0)
     rand_iia_d, rand_recon = eval_vae_metrics(vae_rand, model_lm, eval_pairs, hook_name, act_t[:200], device)
     with torch.inference_mode():
         mu_c, _, _, _ = vae_rand.encode(act_t[:200])
@@ -951,7 +1101,7 @@ def run_all_variants(model_lm, train_pairs, eval_pairs, act_t, lab_t,
     # --- C2: Reconstruction-only (alpha=0) ---
     log.info(f"[{utc_ts()}]   C2: Recon-only k={k}")
     vae_recon_only = build_vae(d_model, k, 16, hidden_dim, n_classes, device)
-    vae_recon_only = train_vae(vae_recon_only, act_t, lab_t, device, n_epochs=vae_epochs, alpha=0.0)
+    vae_recon_only = train_vae(vae_recon_only, train_acts, train_labs, device, n_epochs=vae_epochs, alpha=0.0)
     recon_iia_d, recon_mse = eval_vae_metrics(vae_recon_only, model_lm, eval_pairs, hook_name, act_t[:200], device)
     _store_iia(results, "c2_recon_only", recon_iia_d)
     results["c2_recon_only_recon"] = recon_mse
@@ -991,13 +1141,32 @@ def run_all_variants(model_lm, train_pairs, eval_pairs, act_t, lab_t,
     del plain_vae
     torch.cuda.empty_cache()
 
-    # --- Random subspace DAS (noise floor) ---
-    R_rand = torch.randn(d_model, k, device=device)
-    Q_rand, _ = torch.linalg.qr(R_rand)
-    rand_das_std, rand_das_strict = eval_das_iia(Q_rand, model_lm, eval_pairs, hook_name, device)
+    # --- Random subspace DAS (noise floor), estimated with an interval ---
+    # Every vacuity threshold in PREREGISTRATION_RECONSTRUCTION_CRITERION.md is
+    # defined as an excess over this floor's UPPER bound. A single draw gives a
+    # point estimate with no sampling spread, which is why three tasks previously
+    # reported a floor of exactly 0.000 against which a 0.05 margin is not a
+    # detectable quantity. Estimated over FLOOR_DRAWS independent subspaces.
+    floor_std_vals, floor_strict_vals = [], []
+    for _ in range(FLOOR_DRAWS):
+        Q_rand, _ = torch.linalg.qr(torch.randn(d_model, k, device=device))
+        s, st = eval_das_iia(Q_rand, model_lm, eval_pairs, hook_name, device)
+        floor_std_vals.append(s)
+        floor_strict_vals.append(st)
+    rand_das_std, rand_std_hw = mean_ci95(floor_std_vals)
+    rand_das_strict, rand_strict_hw = mean_ci95(floor_strict_vals)
     results["random_das_iia"] = rand_das_std
     results["random_das_strict_iia"] = rand_das_strict
-    log.info(f"[{utc_ts()}]   Random DAS: IIA={rand_das_std:.4f} (strict={rand_das_strict:.4f})")
+    results["random_das_iia_ci95_halfwidth"] = rand_std_hw
+    results["random_das_strict_ci95_halfwidth"] = rand_strict_hw
+    results["random_das_iia_upper"] = rand_das_std + rand_std_hw
+    results["random_das_strict_upper"] = rand_das_strict + rand_strict_hw
+    results["random_das_iia_draws"] = floor_std_vals
+    results["random_das_strict_draws"] = floor_strict_vals
+    log.info(f"[{utc_ts()}]   Random DAS floor over {FLOOR_DRAWS} draws: "
+             f"IIA={rand_das_std:.4f}+/-{rand_std_hw:.4f} (upper={rand_das_std + rand_std_hw:.4f}), "
+             f"strict={rand_das_strict:.4f}+/-{rand_strict_hw:.4f} "
+             f"(upper={rand_das_strict + rand_strict_hw:.4f})")
 
     # --- pi-plain-VAE (label-conditional prior, NO causal/nuisance split) ---
     log.info(f"[{utc_ts()}]   pi-plain-VAE k={k}")
@@ -1182,7 +1351,7 @@ def run_ioi(device, log):
         task_results[f"k{k}"] = run_all_variants(
             model, train_pairs, eval_pairs, act_t, lab_t,
             n_classes, D, k, hook_name, device, log,
-            hidden_dim=256, vae_epochs=500,
+            hidden_dim=256, vae_epochs=500, task="ioi",
         )
 
     del model
@@ -1318,7 +1487,7 @@ def run_mib_task(task_name, device, log, *, max_pairs=0, n_seeds=1,
             run_result = run_all_variants(
                 model, train_pairs, eval_pairs, act_t, lab_t,
                 n_classes, D, k, hook_name, device, log,
-                hidden_dim=256, vae_epochs=vae_epochs,
+                hidden_dim=256, vae_epochs=vae_epochs, task=task_name,
             )
             seed_runs.append(run_result)
 
@@ -1467,6 +1636,7 @@ def run_grokking(operation, n_epochs, device, log, seed=999):
                     "base_act": test_acts[i],
                     "src_act": test_acts[j],
                     "base_toks": test_data_t[i:i + 1],
+                    "base_label": test_labels_t[i].item(),
                     "src_label": test_labels_t[j].item(),
                 })
                 if len(pairs) >= 600:
@@ -1488,7 +1658,8 @@ def run_grokking(operation, n_epochs, device, log, seed=999):
         task_results[f"k{k}"] = run_all_variants(
             model, train_pairs, eval_pairs, activations, labels,
             p, D, k, hook_name, device, log,
-            hidden_dim=128, vae_epochs=500,
+            hidden_dim=128, vae_epochs=500, train_idx=train_idx,
+            task=operation,
         )
 
     del model, activations
@@ -2517,7 +2688,7 @@ def run_ivae_verification(operations: str = "addition,multiplication",
     return all_results
 
 
-@app.function(gpu="A100", timeout=21600, volumes={"/results": results_vol})
+@app.function(gpu="A100", timeout=86400, volumes={"/results": results_vol})
 def run_task(task_name: str, n_seeds: int = 1, max_pairs: int = 0,
              k_values: str = "1,2,4", layer: int = -1,
              vae_epochs: int = 500, output_dir: str = "",
@@ -2631,7 +2802,12 @@ def main(tasks: str = "ioi,addition,multiplication,squaring",
           f"layer={layer if layer >= 0 else 'default'}, vae_epochs={vae_epochs}")
     handles = []
     for task in task_list:
-        out = output_dir or f"/results/grassmannian_atlas/k1_pi_ablations/{task}"
+        # output_dir is a PREFIX, not a full path. Previously it was used
+        # verbatim for every task, so a multi-task run with a custom output_dir
+        # had all six tasks writing to one file and overwriting each other,
+        # while omitting it overwrote the published results in place.
+        out = (f"{output_dir.rstrip('/')}/{task}" if output_dir
+               else f"/results/grassmannian_atlas/k1_pi_ablations/{task}")
         h = run_task.spawn(task, n_seeds=n_seeds, max_pairs=max_pairs,
                            k_values=k_values, layer=layer,
                            vae_epochs=vae_epochs, output_dir=out,

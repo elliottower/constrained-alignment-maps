@@ -1,32 +1,16 @@
 __pycache__/
 *.pyc
-.DS_Store
-.env
 .venv/
-*.egg-info/
-dist/
-build/
-.ruff_cache/
-.pytest_cache/
-*.aux
-*.log
-*.out
-*.bbl
-*.blg
-*.fls
-*.fdb_latexmk
-*.synctex.gz
-*.nav
-*.snm
-*.toc
-.tmp_claude/
-cache/
-*.pt
-*.safetensors
-results/atlas.jsonl
-results/grokking_nonlinear_hunt/
+.DS_Store
 
-paper/theory_patch_complete.md
-paper/TODO_paper_assessment.md
+# Papers are fetched, not vendored: they are third-party PDFs.
+reference/papers/
 
-.idea/
+# Large third-party checkouts come in as submodules or via scripts/fetch_deps.sh
+reference/rep_divergence/
+
+# Modal volume pulls land here; only curated results are committed.
+experiments/results/raw/
+
+# MIB is fetched by scripts/fetch_deps.sh, not vendored or submoduled.
+reference/MIB/

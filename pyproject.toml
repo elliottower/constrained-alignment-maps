@@ -1,0 +1,28 @@
+[project]
+name = "constrained-alignment-maps"
+version = "0.1.0"
+description = "What interchange intervention accuracy does and does not establish about alignment maps for causal abstraction."
+requires-python = ">=3.11,<3.13"
+
+# Versions are pinned exactly. The Modal images in experiments/ pin torch 2.5.1
+# for the GPU runs; that wheel does not exist for macOS x86_64, so local work on
+# an Intel Mac resolves 2.2.2 instead. Both satisfy every API this code uses
+# (torch.nn.utils.parametrizations.orthogonal landed in 1.13). The split is
+# declared rather than left to resolution order.
+dependencies = [
+    "torch==2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "torch==2.5.1; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "numpy==1.26.4",
+    "transformer-lens==2.11.0",
+    "transformers==4.46.3",
+    "pyvene==0.1.8",
+    "einops==0.8.0",
+    "tqdm==4.67.1",
+    "pandas==2.2.3",
+    "scipy==1.14.1",
+    "matplotlib==3.9.2",
+    "modal==0.66.45",
+]
+
+[tool.uv]
+package = false

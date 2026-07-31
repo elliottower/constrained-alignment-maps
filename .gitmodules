@@ -1,3 +1,0 @@
-[submodule "reference/MIB"]
-	path = reference/MIB
-	url = https://github.com/aaronmueller/MIB.git

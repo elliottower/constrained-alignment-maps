@@ -1,66 +1,84 @@
-# Causal Geometry of Grokking
+# Constrained alignment maps
 
-Code for "When Does Linear Causal Abstraction Work? Mapping the Boundary on the Grassmannian."
+What interchange intervention accuracy does and does not establish about
+alignment maps for causal abstraction.
 
-## Key findings
+Started 2026-07-30 as a clean rebuild. The predecessor repository accumulated
+several parallel lines of work whose results became difficult to attribute; this
+one carries only what feeds the current paper. Nothing here is a finished result.
 
-1. **Three-class partition**: 14 modular arithmetic operations split into Always Grassmannian (7), Stochastic (2), and Never Grassmannian (5) — the boundary is sharp and governed by grokking
-2. **Stochastic grokking**: same operation, same hyperparameters, opposite outcomes from random initialization alone — Grassmannian variables appear if and only if the model generalizes
-3. **Linear DAS returns zero IIA** on grokked modular addition at k <= 16, confirming the causal variable is fundamentally nonlinear (lives on S^1, not a linear subspace)
-4. **NL-DAS is vacuous**: unconstrained nonlinear featurizers achieve perfect IIA by learning degenerate encoder-decoders (diversity ratio ~ 0)
-5. **Structured pi-SAE recovers nonlinear causal variables**: pi-VAE + causal/nuisance split + L1 sparsity — neither component alone suffices
-6. **Intrinsic dimension**: pi-SAE saturates at k=2 (the true dimensionality), while DAS climbs linearly without converging
-7. **GPT-2 language tasks**: structured pi-SAE achieves IIA = 0.98 on IOI, works on gender bias, greater-than, hypernymy, SVA, capitals
-8. **Cross-task transfer**: VAE trained on one IOI template transfers to unseen templates (IIA 0.82–0.96)
-9. **E2E training**: end-to-end intervention loss eliminates the gap between additive and replacement interventions (hypernymy IIA 0.58 -> 0.97)
+## The question
 
-## Experiments
+Distributed Alignment Search learns a linear map identifying a subspace whose
+interchange behaviour matches a high-level causal variable.
+[Sutter et al. (2025)](https://arxiv.org/abs/2507.08802) showed that removing the
+linearity constraint makes the framework uninformative: sufficiently expressive
+maps reach 100% interchange accuracy on randomly initialised networks.
 
-| Script | What it tests |
-|--------|---------------|
-| `experiments/grassmannian_geometry.py` | Core atlas: DAS k-sweeps, equivariance, circle geometry for 14 operations |
-| `experiments/grokking_das_emergence.py` | DAS emergence during grokking training trajectory |
-| `experiments/structured_vae_atlas.py` | Structured VAE across all 14 operations |
-| `experiments/sparse_structured_vae.py` | Sparse VAE variants (L1, JumpReLU, TopK) |
-| `experiments/sparse_das_grokking.py` | Sparse DAS on grokking tasks |
-| `experiments/k1_vae_vs_das.py` | Head-to-head DAS vs pi-SAE at k=1 |
-| `experiments/k1_hard_mode.py` | Hard-example IIA with continuous metrics |
-| `experiments/multi_seed_stability.py` | 10-seed stability for stochastic operations |
-| `experiments/cross_task_validation.py` | Cross-template transfer, persistent homology, sheaf consistency |
-| `experiments/cyclic_and_jensen_validation.py` | Cyclic group equivariance, Jensen DoubleIO/TripleIO transfer |
-| `experiments/ioi_subtask_transfer.py` | 8x8 transfer matrix across MIB IOI subtask counterfactuals |
-| `experiments/ioi_subtask_transfer_baselines.py` | Baselines: random, per-subtask, joint, NL-DAS |
-| `experiments/factorized_das_grokking.py` | Factorized DAS on grokking tasks |
-| `experiments/nonlinear_dsi.py` | Nonlinear DSI experiments |
-| `experiments/task_reference_baselines.py` | Canonical ground truth baselines for all tasks |
-| `experiments/generate_figures.py` | Generate all figures from cached results |
+This work asks what a *constrained* nonlinear map does under the same tests, and
+what separates maps that accuracy alone cannot.
 
-## Results
+## Current state
 
-Pre-computed results in `results/` and `experiments/results/`:
+The measurement that organises the work, from
+`experiments/results/random_network_control_e2e/` — indirect object
+identification, k = 1, 180 held-out pairs, random-subspace floor 0.000 over five
+draws:
 
-| Directory | Contents |
-|-----------|----------|
-| `results/grassmannian_atlas/` | Atlas results, factorized DAS, sparse DAS, VAE, multi-seed, cross-task |
-| `experiments/results/feature_analysis/` | Per-feature ablation IIA drops, Fourier alignment |
-| `experiments/results/k1_pi_ablations*/` | k=1 pi-SAE ablations across all tasks and layers |
-| `experiments/results/cross_task/` | Cross-task transfer matrices |
-| `experiments/results/e2e_and_additive/` | E2E vs additive intervention comparison |
-| `experiments/results/gender_bias_e2e/` | Gender bias E2E results |
-| `experiments/results/multi_seed/` | Multi-seed stability (addition, power) |
+| alignment map | pretrained GPT-2 | randomly initialised |
+|---|---|---|
+| linear DAS | 0.200 | 0.000 |
+| unconstrained nonlinear DAS | 1.000 | 0.433 |
+| structured VAE, no interchange term | 1.000 | **0.000** |
+| structured VAE + interchange term | 1.000 | **0.961** |
 
-## Setup
+The last two rows share a builder. Same architecture, same data, same seed. The
+only difference is whether the interchange cross-entropy is in the loss.
 
-```bash
-pip install torch transformer-lens transformers einops matplotlib tqdm datasets
+So the axis that produces vacuity is not expressivity and not constraint. It is
+whether the map is trained on the metric being reported. A map that never
+optimises interchange cannot be made vacuous by training it longer, because
+nothing in its objective rewards producing counterfactual outputs.
 
-# Run locally (CPU, slow)
-python experiments/grassmannian_geometry.py
+## Layout
 
-# Run on Modal GPU (recommended)
-modal run --detach experiments/grassmannian_geometry.py
+```
+paper/          the draft under revision
+experiments/    the scripts that produce its tables
+docs/           pre-registrations, frozen before their runs
+scripts/        dependency fetching
 ```
 
-## License
+- `METHOD_REGISTRY.md` — what each method is, what it is called in code, and what
+  it is called in the paper. Read this before interpreting any result file: the
+  predecessor repository had three different architectures sharing the name
+  "structured VAE".
+- `LAB_NOTEBOOK.md` — decisions, killed claims, surviving claims, open
+  contradictions, and the defects found in the code. Kept deliberately, including
+  the parts that did not work.
+- `PAPER_REVISION_SPEC_constrained_interchange_v4.md` — what to change in the
+  draft and why.
 
-MIT
+## Reproducing
+
+```bash
+./scripts/fetch_deps.sh          # MIB submodule, reference implementations, papers
+uv run python experiments/test_das.py
+uv run python experiments/test_das_matches_mib.py
+```
+
+The second verifies that Distributed Alignment Search here runs
+[MIB's](https://github.com/aaronmueller/MIB) own featurizer with MIB's per-task
+hyperparameters, by class identity, by numerical agreement with their
+featurise-swap-inverse round trip, and by reading their configuration at test
+time so their checkout drifting breaks the test rather than passing quietly.
+
+GPU runs go through Modal and are detached; see the pre-registrations in `docs/`
+for what each one is committed to measuring before it runs.
+
+## Status of claims
+
+Every table in the current draft is single-run. Two claims in this project have
+already died to seeding, and one headline arm failed its own pre-registered
+control on 2026-07-30. Treat reported numbers as provisional until the
+pre-registered runs complete.
