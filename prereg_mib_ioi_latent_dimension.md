@@ -96,12 +96,40 @@ seeing results would make the comparison unregistered.
 The sites are MIB's selection, not ours. They are held fixed across arms so that
 the only difference between `das` and `lcp_vae_interchange` is the map.
 
-## Known limitation, recorded now
+## Vacuity, registered
 
-This design cannot measure vacuity — whether an expressive map imposes the
-abstraction rather than locating it. That requires a criterion defined on a
-network that cannot do the task, and MIB's squared-error metric has no chance
-level. Vacuity is a separate experiment and no claim about it is registered here.
+An earlier draft of this document recorded vacuity as unmeasurable here. That was
+wrong and is corrected before any sweep result exists.
+
+The string-match criterion cannot measure it: a randomly initialized network
+never emits real names, so the criterion is unsatisfiable regardless of the map.
+The logit-difference squared error can, because it is a continuous function of
+two specific token logits and those are defined for any network. A map expressive
+enough to impose the abstraction rather than locate it will drive that difference
+to the target on a network that cannot do the task.
+
+**Condition.** Identical heads, identical frozen coefficients, identical data and
+training. GPT-2 with weights from `AutoModelForCausalLM.from_config`, Hugging
+Face's own initializer. The pretrained condition keeps only examples the model
+answers correctly; a randomly initialized network answers nothing correctly, so
+no filter applies and the pair counts are reported per condition.
+
+**H4 (vacuity).** On the randomly initialized network, no arm reaches
+`E_das(32) * 1.10` — the threshold that defines realizing the abstraction on the
+pretrained model. An arm that does reach it is measuring itself.
+
+**H5 (separation).** If any arm reaches the threshold on the randomly initialized
+network, `lcp_vae_interchange` reaches it at a smaller k than `das`, because the
+nonlinear map is the more expressive one. This is the outcome that would make the
+dimension advantage in H1 uninterpretable, and it is registered so it cannot be
+explained away afterwards.
+
+| outcome | consequence |
+|---|---|
+| H4 holds for every arm | The dimension advantage in H1, if it holds, is about the model. Both claims stand together. |
+| H4 fails for `lcp_vae_interchange` only | The map is vacuous at that k. H1's advantage is withdrawn at and above that k, and the paper reports the vacuity as the finding. |
+| H4 fails for both arms | The threshold is achievable without the model, so it does not certify anything. The metric and the threshold are re-examined before any claim. |
+| H4 fails for `das` only | Unexpected. A linear subspace should not manufacture the answer; this would indicate a leak in the setup and blocks all reporting until traced. |
 
 ## Script
 
