@@ -44,9 +44,9 @@ from CausalAbstraction.experiments.residual_stream_experiment import (
     LM_loss_and_metric_fn, PatchResidualStream)
 from CausalAbstraction.neural.featurizers import Featurizer, SubspaceFeaturizer
 from CausalAbstraction.neural.pipeline import LMPipeline
-from tasks.simple_MCQA.simple_MCQA import (get_causal_model,
-                                           get_counterfactual_datasets,
-                                           get_token_positions)
+from tasks.simple_MCQA import simple_MCQA as _mcqa
+from tasks.two_digit_addition_task import arithmetic as _arith
+from tasks.IOI_task import ioi_task as _ioi
 
 from mib_featurizers import (DirectionalFeaturizer, FlowFeaturizer,
                              LCPVAEFeaturizer, NonlinearFeaturizer)
@@ -59,6 +59,24 @@ MODELS = {
 }
 # `answer_pointer` is XOrder and `answer` is OAnswer in MIB's Table 3c.
 TARGET = "answer_pointer"
+
+# Variables of known cardinality, for calibrating the write-rank measurement.
+# A variable taking c values needs c-1 dimensions for its values to sit in
+# general position, so a rank that tracks c-1 across variables is measuring the
+# variable; a rank that is constant is measuring the map.
+TASKS = {
+    "mcqa": {"module": _mcqa, "targets": {"answer_pointer": 4, "answer": 4}},
+    "arithmetic": {"module": _arith,
+                   "targets": {"ones_carry": 2, "ones_out": 10, "tens_out": 10}},
+    # `output_token` is a name drawn from the task's pool, so its cardinality is
+    # read off the data rather than declared. `output_position` is excluded here:
+    # `raw_output` has only `output_token` as a parent (`ioi_task.py:94`), so
+    # interchanging position is invisible to a text criterion and to the loss
+    # that reads its labels from it.
+    "ioi": {"module": _ioi, "targets": {"output_token": None},
+            "model_args": {"bias": 0.0, "token_coeff": 0.0, "position_coeff": 0.0},
+            "space_prefix": True},
+}
 
 
 def log(msg):
@@ -141,11 +159,14 @@ def _collect_acts_and_labels(experiment, causal_model, train_datasets, units):
         collected = _collect_features(ds, experiment.pipeline, units,
                                       experiment.config, collect_counterfactuals=False)
         acts.append(collected[0][0])
-        labels += [int(causal_model.run_forward(ex["input"])[TARGET]) for ex in ds]
+        labels += [causal_model.run_forward(ex["input"])[TARGET] for ex in ds]
     units[0][0].set_featurizer(saved)
     x = torch.cat(acts)
-    y = torch.tensor(labels[:x.shape[0]], dtype=torch.long)
-    return x, y
+    # Values may be strings (a name) or integers (a digit); encode either way, and
+    # let the observed set define the cardinality rather than declaring it.
+    vocab = {v: i for i, v in enumerate(sorted({str(v) for v in labels}))}
+    y = torch.tensor([vocab[str(v)] for v in labels[:x.shape[0]]], dtype=torch.long)
+    return x, y, len(vocab)
 
 
 def train_pi_sae(featurizer, experiment, causal_model, train_datasets, device,
@@ -167,7 +188,7 @@ def train_pi_sae(featurizer, experiment, causal_model, train_datasets, device,
     a randomly initialized network where this one scored 0.000, so the interchange
     objective is what the vacuity result turns on.
     """
-    x, y = _collect_acts_and_labels(experiment, causal_model, train_datasets, units)
+    x, y, _ = _collect_acts_and_labels(experiment, causal_model, train_datasets, units)
     x, y = x.to(device).float(), y.to(device)
     core = featurizer.core.to(device).float()
     opt = torch.optim.Adam(core.parameters(), lr=lr)
@@ -276,10 +297,13 @@ def run(model_key, random_init, layer, k, arms, size, device, out_path,
         flow_layers=4, flow_lr=1e-3, flow_epochs=20,
         vae_lr=1e-3, vae_ix_epochs=30, expansion=8, alpha=10.0,
         l1_coeff=0.0, prototype_write=False, z_nuisance=None, seed=0,
-        das_epochs=8, on_checkpoint=None):
+        das_epochs=8, task="mcqa", target_variable=TARGET,
+        on_checkpoint=None):
     t0 = time.time()
     # Seeds map initialization and training only; the dataset and split are fixed
     # upstream by MIB, so a seed varies the map and nothing else.
+    global TARGET
+    TARGET = target_variable
     random.seed(seed)
     torch.manual_seed(seed)
     condition = "random_init" if random_init else "pretrained"
@@ -289,20 +313,35 @@ def run(model_key, random_init, layer, k, arms, size, device, out_path,
     d_model = pipeline.model.config.hidden_size
     log(f"  d_model {d_model}, {pipeline.model.config.num_hidden_layers} layers")
 
-    causal_model = get_causal_model()
-    datasets = get_counterfactual_datasets(hf=True, size=size)
-    token_positions = get_token_positions(pipeline, causal_model)
+    spec = TASKS[task]
+    mod = spec["module"]
+    declared = spec["targets"][TARGET]
+    causal_model = (mod.get_causal_model(spec["model_args"])
+                    if "model_args" in spec else mod.get_causal_model())
+    if spec.get("space_prefix"):
+        # The model emits " Mary" while the causal model returns "Mary", and the
+        # loss compares token ids, so the bare form points training at a token the
+        # model never produces.
+        causal_model.mechanisms["raw_output"] = lambda output_token: " " + output_token
+    datasets = mod.get_counterfactual_datasets(hf=True, size=size)
+    token_positions = mod.get_token_positions(pipeline, causal_model)
 
     if not random_init:
         datasets = FilterExperiment(pipeline, causal_model, checker).filter(
             datasets, verbose=True, batch_size=batch_size)
+    # Cardinality is read off the data, not declared: a value set can be smaller
+    # than the causal model's nominal one, and `output_token` has no fixed size.
+    n_classes = len({str(causal_model.run_forward(ex["input"])[TARGET])
+                     for a, b in datasets.items() if "train" in a for ex in b})
+    log(f"  target {TARGET}: {n_classes} distinct values observed"
+        + (f" (declared {declared})" if declared else ""))
     train = {a: b for a, b in datasets.items() if "train" in a}
     test = {a: b for a, b in datasets.items() if "test" in a and "private" not in a}
     log(f"  {len(train)} train / {len(test)} test datasets")
 
-    results = {"task": "mcqa", "model_key": model_key, "model": MODELS[model_key],
+    results = {"task": task, "model_key": model_key, "model": MODELS[model_key],
                "condition": condition, "layer": layer, "k": k, "seed": seed,
-               "target_variable": TARGET, "d_model": d_model, "methods": {}}
+               "target_variable": TARGET, "n_classes": n_classes, "declared_cardinality": declared, "d_model": d_model, "methods": {}}
 
     for arm in arms:
         log(f"  arm: {arm}")
@@ -352,7 +391,7 @@ def run(model_key, random_init, layer, k, arms, size, device, out_path,
             exp = build_experiment(
                 pipeline, causal_model, layer, token_positions,
                 lambda: DirectionalFeaturizer(d_input=d_model, k=k,
-                                              hidden_dim=vae_hidden, n_classes=4,
+                                              hidden_dim=vae_hidden, n_classes=n_classes,
                                               expansion_factor=expansion, id=arm),
                 batch_size, k, arm, das_epochs)
             for units in exp.model_units_lists:
@@ -373,7 +412,7 @@ def run(model_key, random_init, layer, k, arms, size, device, out_path,
                 # hidden 256, causal block widened by `expansion`.
                 return LCPVAEFeaturizer(d_input=d_model, z_causal_dim=k,
                                         z_nuisance_dim=z_nuisance or max(4 * k, 4),
-                                        hidden_dim=vae_hidden, n_classes=4,
+                                        hidden_dim=vae_hidden, n_classes=n_classes,
                                         expansion_factor=expansion,
                                         prototype_write=prototype_write, id=arm)
 
@@ -416,7 +455,7 @@ def run(model_key, random_init, layer, k, arms, size, device, out_path,
         results["methods"][arm] = {**score(raw), "elapsed_seconds": time.time() - t_arm}
         if arm in ("lcp_vae", "lcp_vae_interchange", "directional"):
             units = exp.model_units_lists[-1]
-            acts, _ = _collect_acts_and_labels(exp, causal_model, train, units)
+            acts, _, _ = _collect_acts_and_labels(exp, causal_model, train, units)
             fz = units[0][0].featurizer
             dirs = causal_feature_directions(fz, acts[:256], device)
             results["methods"][arm]["causal_directions"] = dirs.tolist()
